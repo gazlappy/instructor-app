@@ -4,6 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { LESSON_TYPE_LABELS, LESSON_STATUS_LABELS, type LessonListItem } from '@/db/types';
+import { useAppSettings } from '@/hooks/app-settings';
 import { formatTimeRange } from '@/lib/dates';
 
 export function LessonCard({
@@ -15,6 +16,7 @@ export function LessonCard({
   onPress?: () => void;
   showDate?: string;
 }) {
+  const { settings } = useAppSettings();
   const inactive = lesson.status === 'cancelled' || lesson.status === 'no_show';
 
   return (
@@ -25,7 +27,7 @@ export function LessonCard({
           <View style={styles.topRow}>
             <ThemedText type="smallBold">
               {showDate ? `${showDate} · ` : ''}
-              {formatTimeRange(lesson.startMinutes, lesson.durationMinutes)}
+              {formatTimeRange(lesson.startMinutes, lesson.durationMinutes, settings.use12HourTime)}
             </ThemedText>
             {lesson.status !== 'scheduled' && (
               <ThemedText type="small" themeColor={inactive ? 'danger' : 'textSecondary'}>

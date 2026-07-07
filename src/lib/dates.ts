@@ -57,13 +57,18 @@ export function shortDayTitle(key: DateKey): string {
   return `${weekdayShort(key)} ${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)}`;
 }
 
-/** Minutes-past-midnight → "09:30" */
-export function formatMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60);
+/** Minutes-past-midnight → "09:30" (24h) or "9:30 am" (12h). */
+export function formatMinutes(minutes: number, use12Hour = false): string {
+  const h = Math.floor(minutes / 60) % 24;
   const m = minutes % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  if (!use12Hour) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  const suffix = h < 12 ? 'am' : 'pm';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
-export function formatTimeRange(startMinutes: number, durationMinutes: number): string {
-  return `${formatMinutes(startMinutes)} – ${formatMinutes(startMinutes + durationMinutes)}`;
+export function formatTimeRange(startMinutes: number, durationMinutes: number, use12Hour = false): string {
+  return `${formatMinutes(startMinutes, use12Hour)} – ${formatMinutes(startMinutes + durationMinutes, use12Hour)}`;
 }

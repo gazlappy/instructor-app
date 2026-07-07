@@ -9,7 +9,7 @@ import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
-import { DEFAULT_SETTINGS, DURATION_OPTIONS, getSettings } from '@/db/settings';
+import { DURATION_OPTIONS } from '@/db/settings';
 import {
   LESSON_STATUS_LABELS,
   LESSON_TYPE_LABELS,
@@ -18,6 +18,7 @@ import {
   type LessonType,
 } from '@/db/types';
 import { useQuery } from '@/db/use-query';
+import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
 import { addDays, formatMinutes, shortDayTitle, todayKey } from '@/lib/dates';
@@ -38,7 +39,7 @@ export function LessonForm({
 
   const { data: students } = useQuery((db) => listStudents(db));
   const { data: instructors } = useQuery((db) => listInstructors(db));
-  const { data: settings } = useQuery((db) => getSettings(db));
+  const { settings } = useAppSettings();
 
   const [studentId, setStudentId] = useState<number | null>(existing?.studentId ?? initialStudentId ?? null);
   const [instructorId, setInstructorId] = useState<number | null>(existing?.instructorId ?? null);
@@ -46,7 +47,7 @@ export function LessonForm({
   const [startMinutes, setStartMinutes] = useState(existing?.startMinutes ?? 9 * 60);
   // null = untouched; falls back to the default duration from Settings.
   const [durationMinutes, setDurationMinutes] = useState<number | null>(existing?.durationMinutes ?? null);
-  const [type, setType] = useState<LessonType>(existing?.type ?? 'lesson');
+  const [type, setType] = useState<LessonType>(existing?.type ?? settings.defaultLessonType);
   // null = untouched; falls back to the student's pickup address for new lessons.
   const [pickupLocation, setPickupLocation] = useState<string | null>(
     existing ? (existing.pickupLocation ?? '') : null
@@ -75,13 +76,14 @@ export function LessonForm({
   const effectiveInstructorId = instructorId ?? instructors?.[0]?.id ?? null;
   const selectedStudent = students?.find((s) => s.id === studentId);
   const effectivePickup = pickupLocation ?? selectedStudent?.pickupAddress ?? '';
-  const effectiveDuration = durationMinutes ?? settings?.defaultDurationMinutes ?? DEFAULT_SETTINGS.defaultDurationMinutes;
+  const effectiveDuration = durationMinutes ?? settings.defaultDurationMinutes;
+  const estimatedPrice = (settings.hourlyRate * effectiveDuration) / 60;
 
   const timeSlots = useMemo(() => {
-    const start = settings?.dayStartMinutes ?? DEFAULT_SETTINGS.dayStartMinutes;
-    const end = settings?.dayEndMinutes ?? DEFAULT_SETTINGS.dayEndMinutes;
     const slots: number[] = [];
-    for (let m = start; m <= end; m += 30) slots.push(m);
+    for (let m = settings.dayStartMinutes; m <= settings.dayEndMinutes; m += settings.slotIntervalMinutes) {
+      slots.push(m);
+    }
     // Keep an existing lesson's time selectable even if outside working hours.
     if (!slots.includes(startMinutes)) slots.unshift(startMinutes);
     return slots;
@@ -161,7 +163,7 @@ export function LessonForm({
 
           <Field label="Start time">
             <ChipSelect
-              options={timeSlots.map((m) => ({ value: m, label: formatMinutes(m) }))}
+              options={timeSlots.map((m) => ({ value: m, label: formatMinutes(m, settings.use12HourTime) }))}
               value={startMinutes}
               onChange={setStartMinutes}
             />
@@ -173,6 +175,12 @@ export function LessonForm({
               value={effectiveDuration}
               onChange={setDurationMinutes}
             />
+            {settings.hourlyRate > 0 && (
+              <ThemedText type="small" themeColor="textSecondary">
+                Estimated price: {settings.currency}
+                {estimatedPrice.toFixed(2).replace(/\.00$/, '')}
+              </ThemedText>
+            )}
           </Field>
 
           <Field label="Type">

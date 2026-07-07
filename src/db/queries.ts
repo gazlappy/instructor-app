@@ -63,7 +63,14 @@ const STUDENT_SELECT = `
 
 export function listStudents(
   db: SQLiteDatabase,
-  opts: { instructorId?: number | null; search?: string } = {}
+  opts: {
+    instructorId?: number | null;
+    search?: string;
+    includePassed?: boolean;
+    /** 'nextLesson' needs `today` (date key) to find each student's next scheduled lesson. */
+    sort?: 'name' | 'nextLesson';
+    today?: string;
+  } = {}
 ): Promise<StudentListItem[]> {
   const where: string[] = [];
   const params: (string | number)[] = [];
@@ -75,10 +82,30 @@ export function listStudents(
     where.push("(s.first_name || ' ' || s.last_name) LIKE ?");
     params.push(`%${opts.search.trim()}%`);
   }
+  if (opts.includePassed === false) {
+    where.push("s.status != 'passed'");
+  }
+
+  const byName = "s.first_name COLLATE NOCASE, s.last_name COLLATE NOCASE";
+  const byStatus = "CASE s.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END";
+
+  if (opts.sort === 'nextLesson' && opts.today) {
+    return db.getAllAsync<StudentListItem>(
+      `${STUDENT_SELECT}
+       LEFT JOIN (
+         SELECT student_id, MIN(date) AS next_lesson FROM lessons
+         WHERE status = 'scheduled' AND date >= ? GROUP BY student_id
+       ) nl ON nl.student_id = s.id
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY ${byStatus}, nl.next_lesson IS NULL, nl.next_lesson, ${byName}`,
+      opts.today,
+      ...params
+    );
+  }
+
   return db.getAllAsync<StudentListItem>(
     `${STUDENT_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY CASE s.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
-              s.first_name COLLATE NOCASE, s.last_name COLLATE NOCASE`,
+     ORDER BY ${byStatus}, ${byName}`,
     ...params
   );
 }

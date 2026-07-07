@@ -4,7 +4,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { DATABASE_NAME, migrateDb } from '@/db/schema';
-import { ThemePreferenceProvider, useAppColorScheme } from '@/hooks/theme-preference';
+import { AppSettingsProvider, useAppColorScheme } from '@/hooks/app-settings';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,9 +29,9 @@ function ThemedNavigator() {
 export default function RootLayout() {
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDb}>
-      <ThemePreferenceProvider>
+      <AppSettingsProvider>
         <ThemedNavigator />
-      </ThemePreferenceProvider>
+      </AppSettingsProvider>
     </SQLiteProvider>
   );
 }

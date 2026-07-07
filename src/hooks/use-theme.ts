@@ -4,7 +4,7 @@
  */
 
 import { Colors } from '@/constants/theme';
-import { useAppColorScheme } from '@/hooks/theme-preference';
+import { useAppColorScheme } from '@/hooks/app-settings';
 
 export function useTheme() {
   return Colors[useAppColorScheme()];

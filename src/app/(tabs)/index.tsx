@@ -10,7 +10,7 @@ import { Chip } from '@/components/ui/chip';
 import { Fab } from '@/components/ui/fab';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { listInstructors, listLessonDays, listLessonsForDay } from '@/db/queries';
-import { getSettings } from '@/db/settings';
+import { useAppSettings } from '@/hooks/app-settings';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, dayOfMonth, monthTitle, startOfWeek, todayKey, weekdayShort, type DateKey } from '@/lib/dates';
@@ -21,15 +21,18 @@ export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState<DateKey>(todayKey());
   const [instructorFilter, setInstructorFilter] = useState<number | null>(null);
 
+  const { settings } = useAppSettings();
   const { data: instructors } = useQuery((db) => listInstructors(db));
-  const { data: settings } = useQuery((db) => getSettings(db));
 
-  const weekStart = startOfWeek(selectedDay, settings?.weekStart ?? 'monday');
+  const weekStart = startOfWeek(selectedDay, settings.weekStart);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const { data: lessons } = useQuery(
     (db) => listLessonsForDay(db, selectedDay, instructorFilter),
     [selectedDay, instructorFilter]
   );
+  const visibleLessons = settings.hideCancelled
+    ? (lessons ?? []).filter((l) => l.status !== 'cancelled' && l.status !== 'no_show')
+    : (lessons ?? []);
   const { data: lessonDays } = useQuery(
     (db) => listLessonDays(db, weekStart, addDays(weekStart, 6), instructorFilter),
     [weekStart, instructorFilter]
@@ -40,7 +43,7 @@ export default function ScheduleScreen() {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <View style={styles.header}>
           <View>
-            {!!settings?.schoolName && (
+            {!!settings.schoolName && (
               <ThemedText type="smallBold" themeColor="textSecondary">
                 {settings.schoolName}
               </ThemedText>
@@ -112,7 +115,7 @@ export default function ScheduleScreen() {
         )}
 
         <FlatList
-          data={lessons ?? []}
+          data={visibleLessons}
           keyExtractor={(lesson) => String(lesson.id)}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (

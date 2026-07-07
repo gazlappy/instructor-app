@@ -11,7 +11,9 @@ import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constan
 import { listStudents } from '@/db/queries';
 import { STUDENT_STATUS_LABELS, type StudentListItem } from '@/db/types';
 import { useQuery } from '@/db/use-query';
+import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
+import { todayKey } from '@/lib/dates';
 
 function initials(student: StudentListItem): string {
   return `${student.firstName[0] ?? ''}${student.lastName[0] ?? ''}`.toUpperCase();
@@ -21,7 +23,17 @@ export default function StudentsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const [search, setSearch] = useState('');
-  const { data: students } = useQuery((db) => listStudents(db, { search }), [search]);
+  const { settings } = useAppSettings();
+  const { data: students } = useQuery(
+    (db) =>
+      listStudents(db, {
+        search,
+        includePassed: settings.showPassedStudents,
+        sort: settings.studentSort,
+        today: todayKey(),
+      }),
+    [search, settings.showPassedStudents, settings.studentSort]
+  );
 
   return (
     <ThemedView style={styles.container}>
