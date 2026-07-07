@@ -1,6 +1,33 @@
-# Welcome to your Expo app 👋
+# Instructor App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A mobile app for driving schools: lesson scheduling, student management, and per-student
+progress tracking against a DVSA-style syllabus. Built with [Expo](https://expo.dev)
+(React Native + TypeScript, expo-router) and designed instructor-first — each device works
+standalone and offline with a local SQLite database.
+
+## Features
+
+- **Schedule** — week strip with lesson-day dots, day view of lessons, filter by instructor,
+  book/edit/cancel lessons (time, duration, type, pickup location, notes, status).
+- **Students** — searchable list, profiles with contact details, pickup address, test date,
+  status (active / passed / paused), and notes.
+- **Progress tracking** — a seeded syllabus (Basics, Junctions, Manoeuvres, Independent
+  driving, Advanced) with a 5-level scale per skill (Introduced → Independent) and an
+  overall progress bar per student.
+- **Multi-instructor** — instructors with names/colors managed in Settings; students and
+  lessons are instructor-aware, so a shared cloud backend can be added later without
+  remodelling the data.
+
+## Architecture
+
+- `src/app/` — screens (expo-router file-based routing; `(tabs)/` holds the three tabs,
+  `student/` and `lesson/` hold the stack/modal screens).
+- `src/db/` — SQLite layer: [schema.ts](src/db/schema.ts) (migrations + syllabus seed),
+  [queries.ts](src/db/queries.ts) (all SQL), [use-query.ts](src/db/use-query.ts)
+  (refetch-on-focus hook).
+- `src/components/` — shared UI (forms, chips, lesson card, tab bars).
+- Data is stored on-device via `expo-sqlite` (`instructor-app.db`); web builds use the
+  wa-sqlite WASM backend (see [metro.config.js](metro.config.js)).
 
 ## Get started
 
@@ -16,41 +43,13 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+Then open it on a phone with [Expo Go](https://expo.dev/go) (scan the QR code), in an
+[Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/) /
+[iOS simulator](https://docs.expo.dev/workflow/ios-simulator/), or press `w` for the web preview.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Checks
 
 ```bash
-npm run reset-project
+npx tsc --noEmit   # typecheck
+npx expo lint      # lint
 ```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

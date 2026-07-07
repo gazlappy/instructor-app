@@ -1,0 +1,241 @@
+import { useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useMemo, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Chip } from '@/components/ui/chip';
+import { ChipSelect, Field, FormInput } from '@/components/ui/form';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
+import {
+  LESSON_STATUS_LABELS,
+  LESSON_TYPE_LABELS,
+  type Lesson,
+  type LessonStatus,
+  type LessonType,
+} from '@/db/types';
+import { useQuery } from '@/db/use-query';
+import { useTheme } from '@/hooks/use-theme';
+import { confirmDestructive, showAlert } from '@/lib/alert';
+import { addDays, formatMinutes, shortDayTitle, todayKey } from '@/lib/dates';
+
+const DURATIONS = [30, 45, 60, 90, 120];
+const TIME_SLOTS = Array.from({ length: 32 }, (_, i) => 6 * 60 + i * 30); // 06:00–21:30
+
+export function LessonForm({
+  existing,
+  initialDate,
+  initialStudentId,
+}: {
+  existing?: Lesson;
+  initialDate?: string;
+  initialStudentId?: number;
+}) {
+  const db = useSQLiteContext();
+  const router = useRouter();
+  const theme = useTheme();
+
+  const { data: students } = useQuery((db) => listStudents(db));
+  const { data: instructors } = useQuery((db) => listInstructors(db));
+
+  const [studentId, setStudentId] = useState<number | null>(existing?.studentId ?? initialStudentId ?? null);
+  const [instructorId, setInstructorId] = useState<number | null>(existing?.instructorId ?? null);
+  const [date, setDate] = useState(existing?.date ?? initialDate ?? todayKey());
+  const [startMinutes, setStartMinutes] = useState(existing?.startMinutes ?? 9 * 60);
+  const [durationMinutes, setDurationMinutes] = useState(existing?.durationMinutes ?? 60);
+  const [type, setType] = useState<LessonType>(existing?.type ?? 'lesson');
+  // null = untouched; falls back to the student's pickup address for new lessons.
+  const [pickupLocation, setPickupLocation] = useState<string | null>(
+    existing ? (existing.pickupLocation ?? '') : null
+  );
+  const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [status, setStatus] = useState<LessonStatus>(existing?.status ?? 'scheduled');
+
+  const dateOptions = useMemo(() => {
+    const start = addDays(todayKey(), -7);
+    const days = Array.from({ length: 60 }, (_, i) => addDays(start, i));
+    if (!days.includes(date)) days.unshift(date);
+    return days.map((d) => ({ value: d, label: shortDayTitle(d) }));
+  }, [date]);
+
+  const selectableStudents = useMemo(
+    () => (students ?? []).filter((s) => s.status !== 'passed' || s.id === studentId),
+    [students, studentId]
+  );
+
+  const pickStudent = (id: number) => {
+    setStudentId(id);
+    const student = students?.find((s) => s.id === id);
+    if (student && !existing) setInstructorId(student.instructorId);
+  };
+
+  const effectiveInstructorId = instructorId ?? instructors?.[0]?.id ?? null;
+  const selectedStudent = students?.find((s) => s.id === studentId);
+  const effectivePickup = pickupLocation ?? selectedStudent?.pickupAddress ?? '';
+
+  const save = async () => {
+    if (!studentId) {
+      showAlert('Pick a student');
+      return;
+    }
+    if (!effectiveInstructorId) {
+      showAlert('Add an instructor first', 'Create an instructor in the Settings tab.');
+      return;
+    }
+    const input = {
+      studentId,
+      instructorId: effectiveInstructorId,
+      date,
+      startMinutes,
+      durationMinutes,
+      type,
+      pickupLocation: effectivePickup.trim() || null,
+      notes: notes.trim() || null,
+      status,
+    };
+    if (existing) {
+      await updateLesson(db, existing.id, input);
+    } else {
+      await createLesson(db, input);
+    }
+    router.back();
+  };
+
+  const confirmDelete = () => {
+    if (!existing) return;
+    confirmDestructive('Delete lesson?', 'This cannot be undone.', 'Delete', async () => {
+      await deleteLesson(db, existing.id);
+      router.back();
+    });
+  };
+
+  return (
+    <ThemedView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Field label="Student">
+            {selectableStudents.length === 0 ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                No students yet — add one in the Students tab first.
+              </ThemedText>
+            ) : (
+              <ChipSelect
+                options={selectableStudents.map((s) => ({
+                  value: s.id,
+                  label: `${s.firstName} ${s.lastName}`.trim(),
+                  dotColor: s.instructorColor,
+                }))}
+                value={studentId}
+                onChange={pickStudent}
+              />
+            )}
+          </Field>
+
+          <Field label="Instructor">
+            <ChipSelect
+              options={(instructors ?? []).map((i) => ({ value: i.id, label: i.name, dotColor: i.color }))}
+              value={effectiveInstructorId}
+              onChange={setInstructorId}
+            />
+          </Field>
+
+          <Field label="Date">
+            <ChipSelect options={dateOptions} value={date} onChange={setDate} />
+          </Field>
+
+          <Field label="Start time">
+            <ChipSelect
+              options={TIME_SLOTS.map((m) => ({ value: m, label: formatMinutes(m) }))}
+              value={startMinutes}
+              onChange={setStartMinutes}
+            />
+          </Field>
+
+          <Field label="Duration">
+            <ChipSelect
+              options={DURATIONS.map((d) => ({ value: d, label: `${d} min` }))}
+              value={durationMinutes}
+              onChange={setDurationMinutes}
+            />
+          </Field>
+
+          <Field label="Type">
+            <ChipSelect
+              options={(Object.keys(LESSON_TYPE_LABELS) as LessonType[]).map((t) => ({
+                value: t,
+                label: LESSON_TYPE_LABELS[t],
+              }))}
+              value={type}
+              onChange={setType}
+            />
+          </Field>
+
+          {existing && (
+            <Field label="Status">
+              <ChipSelect
+                options={(Object.keys(LESSON_STATUS_LABELS) as LessonStatus[]).map((s) => ({
+                  value: s,
+                  label: LESSON_STATUS_LABELS[s],
+                }))}
+                value={status}
+                onChange={setStatus}
+              />
+            </Field>
+          )}
+
+          <Field label="Pickup location">
+            <FormInput value={effectivePickup} onChangeText={setPickupLocation} />
+          </Field>
+
+          <Field label="Notes">
+            <FormInput value={notes} onChangeText={setNotes} multiline />
+          </Field>
+
+          <View style={styles.buttons}>
+            {existing && (
+              <Pressable onPress={confirmDelete}>
+                <ThemedText type="small" style={{ color: theme.danger, padding: Spacing.two }}>
+                  Delete
+                </ThemedText>
+              </Pressable>
+            )}
+            <View style={styles.spacer} />
+            <Chip label="Cancel" onPress={() => router.back()} />
+            <Chip label={existing ? 'Save changes' : 'Book lesson'} selected onPress={save} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  flex: {
+    flex: 1,
+  },
+  scroll: {
+    padding: Spacing.three,
+    gap: Spacing.three,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+  },
+  buttons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.six,
+  },
+  spacer: {
+    flex: 1,
+  },
+});
