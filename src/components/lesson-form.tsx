@@ -9,7 +9,6 @@ import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
-import { DURATION_OPTIONS } from '@/db/settings';
 import {
   LESSON_STATUS_LABELS,
   LESSON_TYPE_LABELS,
@@ -88,6 +87,13 @@ export function LessonForm({
     if (!slots.includes(startMinutes)) slots.unshift(startMinutes);
     return slots;
   }, [settings, startMinutes]);
+
+  const durationChoices = useMemo(() => {
+    const list = [...settings.durationOptions];
+    // Keep an existing lesson's length selectable even if no longer offered.
+    if (!list.includes(effectiveDuration)) list.push(effectiveDuration);
+    return list.sort((a, b) => a - b);
+  }, [settings, effectiveDuration]);
 
   const save = async () => {
     if (!studentId) {
@@ -171,7 +177,7 @@ export function LessonForm({
 
           <Field label="Duration">
             <ChipSelect
-              options={DURATION_OPTIONS.map((d) => ({ value: d, label: `${d} min` }))}
+              options={durationChoices.map((d) => ({ value: d, label: `${d} min` }))}
               value={effectiveDuration}
               onChange={setDurationMinutes}
             />

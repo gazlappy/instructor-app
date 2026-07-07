@@ -6,6 +6,12 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export type WeekStart = 'monday' | 'sunday';
 export type StudentSort = 'name' | 'nextLesson';
 
+/** A block-booking deal, e.g. 10 hours for £320. */
+export interface BlockPrice {
+  hours: number;
+  price: number;
+}
+
 export interface AppSettings {
   schoolName: string;
   theme: ThemePreference;
@@ -23,8 +29,13 @@ export interface AppSettings {
   /** Hide cancelled and no-show lessons on the schedule. */
   hideCancelled: boolean;
 
+  /** Which lesson lengths are offered when booking. */
+  durationOptions: number[];
+
   currency: string;
   hourlyRate: number;
+  /** Discounted multi-hour packages. */
+  blockPrices: BlockPrice[];
 
   studentSort: StudentSort;
   showPassedStudents: boolean;
@@ -43,8 +54,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   slotIntervalMinutes: 30,
   hideCancelled: false,
 
+  durationOptions: [30, 45, 60, 90, 120],
+
   currency: '£',
   hourlyRate: 35,
+  blockPrices: [],
 
   studentSort: 'name',
   showPassedStudents: true,
@@ -64,6 +78,27 @@ export async function getSettings(db: SQLiteDatabase): Promise<AppSettings> {
     const value = stored[key] as T | undefined;
     return value !== undefined && values.includes(value) ? value : (DEFAULT_SETTINGS[key] as T);
   };
+  const numArray = (key: keyof AppSettings): number[] => {
+    try {
+      const parsed = JSON.parse(stored[key]);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((n) => typeof n === 'number')) {
+        return parsed;
+      }
+    } catch {}
+    return DEFAULT_SETTINGS[key] as number[];
+  };
+  const blockPrices = (): BlockPrice[] => {
+    try {
+      const parsed = JSON.parse(stored.blockPrices);
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((p) => typeof p?.hours === 'number' && typeof p?.price === 'number')
+      ) {
+        return parsed;
+      }
+    } catch {}
+    return DEFAULT_SETTINGS.blockPrices;
+  };
 
   return {
     schoolName: stored.schoolName ?? DEFAULT_SETTINGS.schoolName,
@@ -78,8 +113,11 @@ export async function getSettings(db: SQLiteDatabase): Promise<AppSettings> {
     slotIntervalMinutes: num('slotIntervalMinutes'),
     hideCancelled: bool('hideCancelled'),
 
+    durationOptions: numArray('durationOptions'),
+
     currency: stored.currency ?? DEFAULT_SETTINGS.currency,
     hourlyRate: num('hourlyRate'),
+    blockPrices: blockPrices(),
 
     studentSort: oneOf('studentSort', ['name', 'nextLesson']),
     showPassedStudents: bool('showPassedStudents'),
@@ -91,13 +129,13 @@ export async function saveSettings(db: SQLiteDatabase, settings: AppSettings): P
     await db.runAsync(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
       key,
-      String(value)
+      typeof value === 'object' ? JSON.stringify(value) : String(value)
     );
   }
 }
 
-/** Lesson duration choices offered in forms and settings. */
-export const DURATION_OPTIONS = [30, 45, 60, 90, 120];
+/** Every lesson length that can be toggled on in Settings. */
+export const DURATION_CANDIDATES = [30, 45, 60, 75, 90, 105, 120, 150, 180];
 
 export const CURRENCY_OPTIONS = ['£', '€', '$'];
 

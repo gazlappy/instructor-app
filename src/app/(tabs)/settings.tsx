@@ -1,6 +1,8 @@
+import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -13,7 +15,7 @@ import { createInstructor, listInstructors, setInstructorArchived, updateInstruc
 import { eraseAllData } from '@/db/schema';
 import {
   CURRENCY_OPTIONS,
-  DURATION_OPTIONS,
+  DURATION_CANDIDATES,
   HOURLY_RATE_OPTIONS,
   SLOT_INTERVAL_OPTIONS,
   type AppSettings,
@@ -25,7 +27,7 @@ import { INSTRUCTOR_COLORS, type Instructor, type LessonType } from '@/db/types'
 import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
-import { confirmDestructive } from '@/lib/alert';
+import { confirmDestructive, showAlert } from '@/lib/alert';
 import { formatMinutes } from '@/lib/dates';
 
 const DAY_START_OPTIONS = Array.from({ length: 17 }, (_, i) => 4 * 60 + i * 30); // 04:00–12:00
@@ -38,23 +40,53 @@ const STUDENT_SORT_LABELS: Record<StudentSort, string> = { name: 'Name', nextLes
 
 // --- building blocks ---
 
-function SectionHeader({ title, right }: { title: string; right?: ReactNode }) {
+/** Collapsible section, closed by default to keep the screen tidy. */
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const theme = useTheme();
+
   return (
-    <View style={styles.sectionHeader}>
-      <ThemedText type="smallBold" themeColor="textSecondary">
-        {title}
-      </ThemedText>
-      {right}
+    <View>
+      <Pressable
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={14}
+          weight="bold"
+          tintColor={theme.textSecondary}
+          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
+        />
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          {title}
+        </ThemedText>
+      </Pressable>
+      {open && (
+        <Animated.View entering={FadeIn.duration(150)} style={styles.sectionBody}>
+          {children}
+        </Animated.View>
+      )}
     </View>
   );
 }
 
-function SettingRow({ label, first, children }: { label: string; first?: boolean; children: ReactNode }) {
+function SettingRow({
+  label,
+  first,
+  stack,
+  children,
+}: {
+  label: string;
+  first?: boolean;
+  /** Render the control below the label (for wide controls like chip grids). */
+  stack?: boolean;
+  children: ReactNode;
+}) {
   const theme = useTheme();
   return (
     <View
       style={[
-        styles.settingRow,
+        stack ? styles.settingRowStacked : styles.settingRow,
         !first && { borderTopColor: theme.backgroundSelected, borderTopWidth: StyleSheet.hairlineWidth },
       ]}>
       <ThemedText type="small" style={styles.settingLabel}>
@@ -102,6 +134,8 @@ function SettingsForm() {
   // Only edited fields live here; everything else follows the stored settings.
   const [overrides, setOverrides] = useState<Partial<AppSettings>>({});
   const [justSaved, setJustSaved] = useState(false);
+  const [blockHours, setBlockHours] = useState('');
+  const [blockPrice, setBlockPrice] = useState('');
 
   const draft: AppSettings = { ...settings, ...overrides };
   const dirty = (Object.keys(overrides) as (keyof AppSettings)[]).some(
@@ -121,115 +155,210 @@ function SettingsForm() {
 
   const onDiscard = () => {
     setOverrides({});
+    setBlockHours('');
+    setBlockPrice('');
     setJustSaved(false);
   };
 
+  const toggleDuration = (minutes: number) => {
+    const enabled = new Set(draft.durationOptions);
+    if (enabled.has(minutes)) enabled.delete(minutes);
+    else enabled.add(minutes);
+    if (enabled.size === 0) return; // keep at least one length offered
+    const list = [...enabled].sort((a, b) => a - b);
+    set('durationOptions', list);
+    if (!list.includes(draft.defaultDurationMinutes)) set('defaultDurationMinutes', list[0]);
+  };
+
+  const addBlockPrice = () => {
+    const hours = Number(blockHours);
+    const price = Number(blockPrice);
+    if (!Number.isFinite(hours) || hours <= 0 || !Number.isFinite(price) || price <= 0) {
+      showAlert('Enter hours and price', 'Both must be numbers greater than zero, e.g. 10 hours for 320.');
+      return;
+    }
+    const next = [...draft.blockPrices.filter((b) => b.hours !== hours), { hours, price }].sort(
+      (a, b) => a.hours - b.hours
+    );
+    set('blockPrices', next);
+    setBlockHours('');
+    setBlockPrice('');
+  };
+
+  const defaultDurationChoices = [...draft.durationOptions].sort((a, b) => a - b);
+
   return (
     <>
-      <SectionHeader title="GENERAL" />
-      <ThemedView type="backgroundElement" style={styles.settingsCard}>
-        <SettingRow label="School name" first>
-          <FormInput
-            placeholder="Add name"
-            value={draft.schoolName}
-            onChangeText={(text) => set('schoolName', text)}
-            style={[styles.settingInput, { backgroundColor: theme.background }]}
-          />
-        </SettingRow>
-        <SettingRow label="Appearance">
-          <ChipGroup labels={THEME_LABELS} value={draft.theme} onChange={(v) => set('theme', v)} />
-        </SettingRow>
-        <SettingRow label="Week starts">
-          <ChipGroup labels={WEEK_START_LABELS} value={draft.weekStart} onChange={(v) => set('weekStart', v)} />
-        </SettingRow>
-        <SettingRow label="12-hour time">
-          <SettingSwitch value={draft.use12HourTime} onChange={(v) => set('use12HourTime', v)} />
-        </SettingRow>
-      </ThemedView>
+      <SettingsSection title="GENERAL">
+        <ThemedView type="backgroundElement" style={styles.settingsCard}>
+          <SettingRow label="School name" first>
+            <FormInput
+              placeholder="Add name"
+              value={draft.schoolName}
+              onChangeText={(text) => set('schoolName', text)}
+              style={[styles.settingInput, { backgroundColor: theme.background }]}
+            />
+          </SettingRow>
+          <SettingRow label="Appearance">
+            <ChipGroup labels={THEME_LABELS} value={draft.theme} onChange={(v) => set('theme', v)} />
+          </SettingRow>
+          <SettingRow label="Week starts">
+            <ChipGroup labels={WEEK_START_LABELS} value={draft.weekStart} onChange={(v) => set('weekStart', v)} />
+          </SettingRow>
+          <SettingRow label="12-hour time">
+            <SettingSwitch value={draft.use12HourTime} onChange={(v) => set('use12HourTime', v)} />
+          </SettingRow>
+        </ThemedView>
+      </SettingsSection>
 
-      <SectionHeader title="LESSONS" />
-      <ThemedView type="backgroundElement" style={styles.settingsCard}>
-        <SettingRow label="Default duration" first>
-          <Stepper
-            value={draft.defaultDurationMinutes}
-            options={DURATION_OPTIONS}
-            format={(d) => `${d} min`}
-            onChange={(v) => set('defaultDurationMinutes', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Default type">
-          <ChipGroup
-            labels={LESSON_TYPE_SHORT}
-            value={draft.defaultLessonType}
-            onChange={(v) => set('defaultLessonType', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Day starts">
-          <Stepper
-            value={draft.dayStartMinutes}
-            options={DAY_START_OPTIONS}
-            format={(m) => formatMinutes(m, draft.use12HourTime)}
-            onChange={(v) => set('dayStartMinutes', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Day ends">
-          <Stepper
-            value={draft.dayEndMinutes}
-            options={DAY_END_OPTIONS}
-            format={(m) => formatMinutes(m, draft.use12HourTime)}
-            onChange={(v) => set('dayEndMinutes', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Time slots every">
-          <Stepper
-            value={draft.slotIntervalMinutes}
-            options={SLOT_INTERVAL_OPTIONS}
-            format={(m) => `${m} min`}
-            onChange={(v) => set('slotIntervalMinutes', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Hide cancelled">
-          <SettingSwitch value={draft.hideCancelled} onChange={(v) => set('hideCancelled', v)} />
-        </SettingRow>
-      </ThemedView>
+      <SettingsSection title="LESSONS">
+        <ThemedView type="backgroundElement" style={styles.settingsCard}>
+          <SettingRow label="Durations offered" first stack>
+            <View style={styles.chipWrap}>
+              {DURATION_CANDIDATES.map((minutes) => (
+                <Chip
+                  key={minutes}
+                  label={`${minutes}`}
+                  selected={draft.durationOptions.includes(minutes)}
+                  onPress={() => toggleDuration(minutes)}
+                />
+              ))}
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              Minutes per lesson shown when booking. Tap to toggle.
+            </ThemedText>
+          </SettingRow>
+          <SettingRow label="Default duration">
+            <Stepper
+              value={draft.defaultDurationMinutes}
+              options={defaultDurationChoices}
+              format={(d) => `${d} min`}
+              onChange={(v) => set('defaultDurationMinutes', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Default type">
+            <ChipGroup
+              labels={LESSON_TYPE_SHORT}
+              value={draft.defaultLessonType}
+              onChange={(v) => set('defaultLessonType', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Day starts">
+            <Stepper
+              value={draft.dayStartMinutes}
+              options={DAY_START_OPTIONS}
+              format={(m) => formatMinutes(m, draft.use12HourTime)}
+              onChange={(v) => set('dayStartMinutes', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Day ends">
+            <Stepper
+              value={draft.dayEndMinutes}
+              options={DAY_END_OPTIONS}
+              format={(m) => formatMinutes(m, draft.use12HourTime)}
+              onChange={(v) => set('dayEndMinutes', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Time slots every">
+            <Stepper
+              value={draft.slotIntervalMinutes}
+              options={SLOT_INTERVAL_OPTIONS}
+              format={(m) => `${m} min`}
+              onChange={(v) => set('slotIntervalMinutes', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Hide cancelled">
+            <SettingSwitch value={draft.hideCancelled} onChange={(v) => set('hideCancelled', v)} />
+          </SettingRow>
+        </ThemedView>
+      </SettingsSection>
 
-      <SectionHeader title="PRICING" />
-      <ThemedView type="backgroundElement" style={styles.settingsCard}>
-        <SettingRow label="Currency" first>
-          <View style={styles.chipRow}>
-            {CURRENCY_OPTIONS.map((symbol) => (
-              <Chip
-                key={symbol}
-                label={symbol}
-                selected={draft.currency === symbol}
-                onPress={() => set('currency', symbol)}
-              />
+      <SettingsSection title="PRICING">
+        <ThemedView type="backgroundElement" style={styles.settingsCard}>
+          <SettingRow label="Currency" first>
+            <View style={styles.chipRow}>
+              {CURRENCY_OPTIONS.map((symbol) => (
+                <Chip
+                  key={symbol}
+                  label={symbol}
+                  selected={draft.currency === symbol}
+                  onPress={() => set('currency', symbol)}
+                />
+              ))}
+            </View>
+          </SettingRow>
+          <SettingRow label="Hourly rate">
+            <Stepper
+              value={draft.hourlyRate}
+              options={HOURLY_RATE_OPTIONS}
+              format={(rate) => `${draft.currency}${rate}`}
+              onChange={(v) => set('hourlyRate', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Block booking deals" stack>
+            {draft.blockPrices.map((block, index) => (
+              <View key={block.hours} style={styles.blockRow}>
+                <ThemedText type="small" style={styles.blockText}>
+                  {block.hours} hours — {draft.currency}
+                  {block.price}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {draft.currency}
+                  {(block.price / block.hours).toFixed(2)}/hr
+                </ThemedText>
+                <Pressable
+                  hitSlop={8}
+                  accessibilityLabel={`Remove ${block.hours} hour deal`}
+                  onPress={() =>
+                    set(
+                      'blockPrices',
+                      draft.blockPrices.filter((_, i) => i !== index)
+                    )
+                  }>
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    ✕
+                  </ThemedText>
+                </Pressable>
+              </View>
             ))}
-          </View>
-        </SettingRow>
-        <SettingRow label="Hourly rate">
-          <Stepper
-            value={draft.hourlyRate}
-            options={HOURLY_RATE_OPTIONS}
-            format={(rate) => `${draft.currency}${rate}`}
-            onChange={(v) => set('hourlyRate', v)}
-          />
-        </SettingRow>
-      </ThemedView>
+            <View style={styles.blockAddRow}>
+              <FormInput
+                placeholder="Hours"
+                value={blockHours}
+                onChangeText={setBlockHours}
+                keyboardType="numeric"
+                style={[styles.blockInput, { backgroundColor: theme.background }]}
+              />
+              <FormInput
+                placeholder={`Price (${draft.currency})`}
+                value={blockPrice}
+                onChangeText={setBlockPrice}
+                keyboardType="numeric"
+                style={[styles.blockInput, { backgroundColor: theme.background }]}
+              />
+              <Chip label="Add" onPress={addBlockPrice} />
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              Discounted packages, e.g. 10 hours for {draft.currency}320.
+            </ThemedText>
+          </SettingRow>
+        </ThemedView>
+      </SettingsSection>
 
-      <SectionHeader title="STUDENTS" />
-      <ThemedView type="backgroundElement" style={styles.settingsCard}>
-        <SettingRow label="Sort by" first>
-          <ChipGroup
-            labels={STUDENT_SORT_LABELS}
-            value={draft.studentSort}
-            onChange={(v) => set('studentSort', v)}
-          />
-        </SettingRow>
-        <SettingRow label="Show passed">
-          <SettingSwitch value={draft.showPassedStudents} onChange={(v) => set('showPassedStudents', v)} />
-        </SettingRow>
-      </ThemedView>
+      <SettingsSection title="STUDENTS">
+        <ThemedView type="backgroundElement" style={styles.settingsCard}>
+          <SettingRow label="Sort by" first>
+            <ChipGroup
+              labels={STUDENT_SORT_LABELS}
+              value={draft.studentSort}
+              onChange={(v) => set('studentSort', v)}
+            />
+          </SettingRow>
+          <SettingRow label="Show passed">
+            <SettingSwitch value={draft.showPassedStudents} onChange={(v) => set('showPassedStudents', v)} />
+          </SettingRow>
+        </ThemedView>
+      </SettingsSection>
 
       {(dirty || justSaved) && (
         <View style={styles.saveBar}>
@@ -320,6 +449,56 @@ function InstructorEditor({ instructor, onDone }: { instructor: Instructor | nul
   );
 }
 
+function InstructorsSection() {
+  const { data: instructors, refresh } = useQuery((db) => listInstructors(db));
+  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
+
+  const closeEditor = () => {
+    setEditingId(null);
+    refresh();
+  };
+
+  return (
+    <SettingsSection title="INSTRUCTORS">
+      {editingId === 'new' ? (
+        <InstructorEditor instructor={null} onDone={closeEditor} />
+      ) : (
+        <View style={styles.addRow}>
+          <Chip label="Add instructor" onPress={() => setEditingId('new')} />
+        </View>
+      )}
+
+      <View style={styles.list}>
+        {(instructors ?? []).map((instructor) =>
+          editingId === instructor.id ? (
+            <InstructorEditor key={instructor.id} instructor={instructor} onDone={closeEditor} />
+          ) : (
+            <Pressable
+              key={instructor.id}
+              onPress={() => setEditingId(instructor.id)}
+              style={({ pressed }) => pressed && styles.pressed}>
+              <ThemedView type="backgroundElement" style={styles.row}>
+                <View style={[styles.dot, { backgroundColor: instructor.color }]} />
+                <View style={styles.rowBody}>
+                  <ThemedText>{instructor.name}</ThemedText>
+                  {instructor.phone && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {instructor.phone}
+                    </ThemedText>
+                  )}
+                </View>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Edit
+                </ThemedText>
+              </ThemedView>
+            </Pressable>
+          )
+        )}
+      </View>
+    </SettingsSection>
+  );
+}
+
 // --- danger zone ---
 
 function DangerZone({ onErased }: { onErased: () => void }) {
@@ -339,8 +518,7 @@ function DangerZone({ onErased }: { onErased: () => void }) {
   };
 
   return (
-    <>
-      <SectionHeader title="DANGER ZONE" />
+    <SettingsSection title="DANGER ZONE">
       <Pressable onPress={confirmErase} style={({ pressed }) => pressed && styles.pressed}>
         <ThemedView type="backgroundElement" style={styles.row}>
           <ThemedText type="small" style={{ color: theme.danger }}>
@@ -348,7 +526,7 @@ function DangerZone({ onErased }: { onErased: () => void }) {
           </ThemedText>
         </ThemedView>
       </Pressable>
-    </>
+    </SettingsSection>
   );
 }
 
@@ -356,15 +534,8 @@ function DangerZone({ onErased }: { onErased: () => void }) {
 
 export default function SettingsScreen() {
   const { reload } = useAppSettings();
-  const { data: instructors, refresh } = useQuery((db) => listInstructors(db));
-  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
-  // Bumped after "erase all data" to remount the settings form with fresh values.
+  // Bumped after "erase all data" to remount everything with fresh values.
   const [resetCount, setResetCount] = useState(0);
-
-  const closeEditor = () => {
-    setEditingId(null);
-    refresh();
-  };
 
   return (
     <ThemedView style={styles.container}>
@@ -374,47 +545,16 @@ export default function SettingsScreen() {
             Settings
           </ThemedText>
 
-          <SettingsForm key={resetCount} />
-
-          <SectionHeader title="INSTRUCTORS" right={<Chip label="Add" onPress={() => setEditingId('new')} />} />
-
-          {editingId === 'new' && <InstructorEditor instructor={null} onDone={closeEditor} />}
-
-          <View style={styles.list}>
-            {(instructors ?? []).map((instructor) =>
-              editingId === instructor.id ? (
-                <InstructorEditor key={instructor.id} instructor={instructor} onDone={closeEditor} />
-              ) : (
-                <Pressable
-                  key={instructor.id}
-                  onPress={() => setEditingId(instructor.id)}
-                  style={({ pressed }) => pressed && styles.pressed}>
-                  <ThemedView type="backgroundElement" style={styles.row}>
-                    <View style={[styles.dot, { backgroundColor: instructor.color }]} />
-                    <View style={styles.rowBody}>
-                      <ThemedText>{instructor.name}</ThemedText>
-                      {instructor.phone && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {instructor.phone}
-                        </ThemedText>
-                      )}
-                    </View>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Edit
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              )
-            )}
+          <View key={resetCount} style={styles.sections}>
+            <SettingsForm />
+            <InstructorsSection />
+            <DangerZone
+              onErased={async () => {
+                await reload();
+                setResetCount((c) => c + 1);
+              }}
+            />
           </View>
-
-          <DangerZone
-            onErased={async () => {
-              await reload();
-              setResetCount((c) => c + 1);
-              refresh();
-            }}
-          />
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
             Data is stored locally on this device.
@@ -443,13 +583,24 @@ const styles = StyleSheet.create({
   title: {
     paddingTop: Spacing.three + TopTabInset,
   },
-  sectionHeader: {
+  sections: {
+    gap: Spacing.three,
+  },
+  sectionToggle: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  sectionBody: {
+    gap: Spacing.two,
+    paddingTop: Spacing.two,
   },
   list: {
     gap: Spacing.two,
+  },
+  addRow: {
+    flexDirection: 'row',
   },
   row: {
     flexDirection: 'row',
@@ -502,6 +653,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     minHeight: 52,
   },
+  settingRowStacked: {
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+  },
   settingLabel: {
     flexShrink: 0,
   },
@@ -513,6 +668,28 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     gap: Spacing.one,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  blockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  blockText: {
+    flex: 1,
+  },
+  blockAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  blockInput: {
+    flex: 1,
+    paddingVertical: Spacing.two,
   },
   saveBar: {
     flexDirection: 'row',
