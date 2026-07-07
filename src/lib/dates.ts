@@ -24,10 +24,10 @@ export function addDays(key: DateKey, days: number): DateKey {
   return toDateKey(date);
 }
 
-/** Monday-based start of week. */
-export function startOfWeek(key: DateKey): DateKey {
+/** Start of the week containing `key`. */
+export function startOfWeek(key: DateKey, weekStart: 'monday' | 'sunday' = 'monday'): DateKey {
   const date = fromDateKey(key);
-  const offset = (date.getDay() + 6) % 7;
+  const offset = weekStart === 'monday' ? (date.getDay() + 6) % 7 : date.getDay();
   return addDays(key, -offset);
 }
 

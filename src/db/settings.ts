@@ -1,5 +1,8 @@
 import { type SQLiteDatabase } from 'expo-sqlite';
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+export type WeekStart = 'monday' | 'sunday';
+
 export interface AppSettings {
   schoolName: string;
   defaultDurationMinutes: number;
@@ -7,6 +10,8 @@ export interface AppSettings {
   dayStartMinutes: number;
   /** Last bookable slot of the day, minutes past midnight. */
   dayEndMinutes: number;
+  theme: ThemePreference;
+  weekStart: WeekStart;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -14,6 +19,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultDurationMinutes: 60,
   dayStartMinutes: 6 * 60, // 06:00
   dayEndMinutes: 21 * 60 + 30, // 21:30
+  theme: 'system',
+  weekStart: 'monday',
 };
 
 export async function getSettings(db: SQLiteDatabase): Promise<AppSettings> {
@@ -23,11 +30,15 @@ export async function getSettings(db: SQLiteDatabase): Promise<AppSettings> {
     const parsed = Number(stored[key]);
     return Number.isFinite(parsed) ? parsed : (DEFAULT_SETTINGS[key] as number);
   };
+  const theme = stored.theme;
+  const weekStart = stored.weekStart;
   return {
     schoolName: stored.schoolName ?? DEFAULT_SETTINGS.schoolName,
     defaultDurationMinutes: num('defaultDurationMinutes'),
     dayStartMinutes: num('dayStartMinutes'),
     dayEndMinutes: num('dayEndMinutes'),
+    theme: theme === 'light' || theme === 'dark' ? theme : 'system',
+    weekStart: weekStart === 'sunday' ? 'sunday' : 'monday',
   };
 }
 

@@ -21,11 +21,11 @@ export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState<DateKey>(todayKey());
   const [instructorFilter, setInstructorFilter] = useState<number | null>(null);
 
-  const weekStart = startOfWeek(selectedDay);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-
   const { data: instructors } = useQuery((db) => listInstructors(db));
   const { data: settings } = useQuery((db) => getSettings(db));
+
+  const weekStart = startOfWeek(selectedDay, settings?.weekStart ?? 'monday');
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const { data: lessons } = useQuery(
     (db) => listLessonsForDay(db, selectedDay, instructorFilter),
     [selectedDay, instructorFilter]

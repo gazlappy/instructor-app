@@ -10,9 +10,11 @@ import { FormInput } from '@/components/ui/form';
 import { Stepper } from '@/components/ui/stepper';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { createInstructor, listInstructors, setInstructorArchived, updateInstructor } from '@/db/queries';
-import { DURATION_OPTIONS, getSettings, saveSetting, type AppSettings } from '@/db/settings';
+import { eraseAllData } from '@/db/schema';
+import { DURATION_OPTIONS, getSettings, saveSetting, type AppSettings, type ThemePreference } from '@/db/settings';
 import { INSTRUCTOR_COLORS, type Instructor } from '@/db/types';
 import { useQuery } from '@/db/use-query';
+import { useThemePreference } from '@/hooks/theme-preference';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive } from '@/lib/alert';
 import { formatMinutes } from '@/lib/dates';
@@ -170,7 +172,79 @@ function GeneralSettings() {
             onChange={(value) => save('dayEndMinutes', value)}
           />
         </SettingRow>
+        <SettingRow label="Week starts">
+          <View style={styles.chipRow}>
+            {(['monday', 'sunday'] as const).map((day) => (
+              <Chip
+                key={day}
+                label={day === 'monday' ? 'Mon' : 'Sun'}
+                selected={settings.weekStart === day}
+                onPress={() => save('weekStart', day)}
+              />
+            ))}
+          </View>
+        </SettingRow>
+        <AppearanceRow />
       </ThemedView>
+    </>
+  );
+}
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
+
+function AppearanceRow() {
+  const { preference, setPreference } = useThemePreference();
+
+  return (
+    <SettingRow label="Appearance">
+      <View style={styles.chipRow}>
+        {(Object.keys(THEME_LABELS) as ThemePreference[]).map((option) => (
+          <Chip
+            key={option}
+            label={THEME_LABELS[option]}
+            selected={preference === option}
+            onPress={() => setPreference(option)}
+          />
+        ))}
+      </View>
+    </SettingRow>
+  );
+}
+
+function DangerZone({ onErased }: { onErased: () => void }) {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const { setPreference } = useThemePreference();
+
+  const confirmErase = () => {
+    confirmDestructive(
+      'Erase all data?',
+      'This permanently deletes every student, lesson, instructor, and setting on this device.',
+      'Erase everything',
+      async () => {
+        await eraseAllData(db);
+        setPreference('system');
+        onErased();
+      }
+    );
+  };
+
+  return (
+    <>
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        DANGER ZONE
+      </ThemedText>
+      <Pressable onPress={confirmErase} style={({ pressed }) => pressed && styles.pressed}>
+        <ThemedView type="backgroundElement" style={styles.row}>
+          <ThemedText type="small" style={{ color: theme.danger }}>
+            Erase all data
+          </ThemedText>
+        </ThemedView>
+      </Pressable>
     </>
   );
 }
@@ -178,6 +252,8 @@ function GeneralSettings() {
 export default function SettingsScreen() {
   const { data: instructors, refresh } = useQuery((db) => listInstructors(db));
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
+  // Bumped after "erase all data" to remount the settings form with fresh values.
+  const [resetCount, setResetCount] = useState(0);
 
   const closeEditor = () => {
     setEditingId(null);
@@ -192,7 +268,7 @@ export default function SettingsScreen() {
             Settings
           </ThemedText>
 
-          <GeneralSettings />
+          <GeneralSettings key={resetCount} />
 
           <View style={styles.sectionHeader}>
             <ThemedText type="smallBold" themeColor="textSecondary">
@@ -230,6 +306,13 @@ export default function SettingsScreen() {
               )
             )}
           </View>
+
+          <DangerZone
+            onErased={() => {
+              setResetCount((c) => c + 1);
+              refresh();
+            }}
+          />
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
             Data is stored locally on this device.
@@ -306,6 +389,10 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: 260,
     paddingVertical: Spacing.two,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: Spacing.one,
   },
   editorButtons: {
     flexDirection: 'row',

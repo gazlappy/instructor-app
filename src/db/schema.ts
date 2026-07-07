@@ -148,3 +148,15 @@ async function migrateToV2(db: SQLiteDatabase): Promise<void> {
     );
   `);
 }
+
+/** Wipes every user record (keeps the skills syllabus) and reseeds the starter instructor. */
+export async function eraseAllData(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    DELETE FROM lessons;
+    DELETE FROM skill_progress;
+    DELETE FROM students;
+    DELETE FROM instructors;
+    DELETE FROM settings;
+  `);
+  await db.runAsync('INSERT INTO instructors (name, color) VALUES (?, ?)', 'Me', '#3c87f7');
+}
