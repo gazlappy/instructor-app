@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,12 +7,15 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { FormInput } from '@/components/ui/form';
+import { Stepper } from '@/components/ui/stepper';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { createInstructor, listInstructors, setInstructorArchived, updateInstructor } from '@/db/queries';
+import { DURATION_OPTIONS, getSettings, saveSetting, type AppSettings } from '@/db/settings';
 import { INSTRUCTOR_COLORS, type Instructor } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive } from '@/lib/alert';
+import { formatMinutes } from '@/lib/dates';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
   const theme = useTheme();
@@ -89,6 +92,89 @@ function InstructorEditor({
   );
 }
 
+const DAY_START_OPTIONS = Array.from({ length: 17 }, (_, i) => 4 * 60 + i * 30); // 04:00–12:00
+const DAY_END_OPTIONS = Array.from({ length: 22 }, (_, i) => 13 * 60 + i * 30); // 13:00–23:30
+
+function SettingRow({
+  label,
+  first,
+  children,
+}: {
+  label: string;
+  first?: boolean;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.settingRow, !first && { borderTopColor: theme.backgroundSelected, borderTopWidth: StyleSheet.hairlineWidth }]}>
+      <ThemedText type="small" style={styles.settingLabel}>
+        {label}
+      </ThemedText>
+      {children}
+    </View>
+  );
+}
+
+function GeneralSettings() {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const { data: settings, refresh } = useQuery((db) => getSettings(db));
+  // null = untouched; falls back to the stored value.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+
+  if (!settings) return null;
+
+  const save = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    await saveSetting(db, key, value);
+    refresh();
+  };
+
+  return (
+    <>
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        GENERAL
+      </ThemedText>
+      <ThemedView type="backgroundElement" style={styles.settingsCard}>
+        <SettingRow label="School name" first>
+          <FormInput
+            placeholder="Add name"
+            value={nameDraft ?? settings.schoolName}
+            onChangeText={(text) => {
+              setNameDraft(text);
+              saveSetting(db, 'schoolName', text.trim());
+            }}
+            style={[styles.settingInput, { backgroundColor: theme.background }]}
+          />
+        </SettingRow>
+        <SettingRow label="Lesson duration">
+          <Stepper
+            value={settings.defaultDurationMinutes}
+            options={DURATION_OPTIONS}
+            format={(d) => `${d} min`}
+            onChange={(value) => save('defaultDurationMinutes', value)}
+          />
+        </SettingRow>
+        <SettingRow label="Day starts">
+          <Stepper
+            value={settings.dayStartMinutes}
+            options={DAY_START_OPTIONS}
+            format={formatMinutes}
+            onChange={(value) => save('dayStartMinutes', value)}
+          />
+        </SettingRow>
+        <SettingRow label="Day ends">
+          <Stepper
+            value={settings.dayEndMinutes}
+            options={DAY_END_OPTIONS}
+            format={formatMinutes}
+            onChange={(value) => save('dayEndMinutes', value)}
+          />
+        </SettingRow>
+      </ThemedView>
+    </>
+  );
+}
+
 export default function SettingsScreen() {
   const { data: instructors, refresh } = useQuery((db) => listInstructors(db));
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
@@ -105,6 +191,8 @@ export default function SettingsScreen() {
           <ThemedText type="subtitle" style={styles.title}>
             Settings
           </ThemedText>
+
+          <GeneralSettings />
 
           <View style={styles.sectionHeader}>
             <ThemedText type="smallBold" themeColor="textSecondary">
@@ -198,6 +286,26 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  settingsCard: {
+    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.three,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+    paddingVertical: Spacing.two,
+    minHeight: 52,
+  },
+  settingLabel: {
+    flexShrink: 0,
+  },
+  settingInput: {
+    flex: 1,
+    maxWidth: 260,
+    paddingVertical: Spacing.two,
   },
   editorButtons: {
     flexDirection: 'row',

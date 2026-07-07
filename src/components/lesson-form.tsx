@@ -9,6 +9,7 @@ import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
+import { DEFAULT_SETTINGS, DURATION_OPTIONS, getSettings } from '@/db/settings';
 import {
   LESSON_STATUS_LABELS,
   LESSON_TYPE_LABELS,
@@ -21,8 +22,6 @@ import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
 import { addDays, formatMinutes, shortDayTitle, todayKey } from '@/lib/dates';
 
-const DURATIONS = [30, 45, 60, 90, 120];
-const TIME_SLOTS = Array.from({ length: 32 }, (_, i) => 6 * 60 + i * 30); // 06:00–21:30
 
 export function LessonForm({
   existing,
@@ -39,12 +38,14 @@ export function LessonForm({
 
   const { data: students } = useQuery((db) => listStudents(db));
   const { data: instructors } = useQuery((db) => listInstructors(db));
+  const { data: settings } = useQuery((db) => getSettings(db));
 
   const [studentId, setStudentId] = useState<number | null>(existing?.studentId ?? initialStudentId ?? null);
   const [instructorId, setInstructorId] = useState<number | null>(existing?.instructorId ?? null);
   const [date, setDate] = useState(existing?.date ?? initialDate ?? todayKey());
   const [startMinutes, setStartMinutes] = useState(existing?.startMinutes ?? 9 * 60);
-  const [durationMinutes, setDurationMinutes] = useState(existing?.durationMinutes ?? 60);
+  // null = untouched; falls back to the default duration from Settings.
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(existing?.durationMinutes ?? null);
   const [type, setType] = useState<LessonType>(existing?.type ?? 'lesson');
   // null = untouched; falls back to the student's pickup address for new lessons.
   const [pickupLocation, setPickupLocation] = useState<string | null>(
@@ -74,6 +75,17 @@ export function LessonForm({
   const effectiveInstructorId = instructorId ?? instructors?.[0]?.id ?? null;
   const selectedStudent = students?.find((s) => s.id === studentId);
   const effectivePickup = pickupLocation ?? selectedStudent?.pickupAddress ?? '';
+  const effectiveDuration = durationMinutes ?? settings?.defaultDurationMinutes ?? DEFAULT_SETTINGS.defaultDurationMinutes;
+
+  const timeSlots = useMemo(() => {
+    const start = settings?.dayStartMinutes ?? DEFAULT_SETTINGS.dayStartMinutes;
+    const end = settings?.dayEndMinutes ?? DEFAULT_SETTINGS.dayEndMinutes;
+    const slots: number[] = [];
+    for (let m = start; m <= end; m += 30) slots.push(m);
+    // Keep an existing lesson's time selectable even if outside working hours.
+    if (!slots.includes(startMinutes)) slots.unshift(startMinutes);
+    return slots;
+  }, [settings, startMinutes]);
 
   const save = async () => {
     if (!studentId) {
@@ -89,7 +101,7 @@ export function LessonForm({
       instructorId: effectiveInstructorId,
       date,
       startMinutes,
-      durationMinutes,
+      durationMinutes: effectiveDuration,
       type,
       pickupLocation: effectivePickup.trim() || null,
       notes: notes.trim() || null,
@@ -149,7 +161,7 @@ export function LessonForm({
 
           <Field label="Start time">
             <ChipSelect
-              options={TIME_SLOTS.map((m) => ({ value: m, label: formatMinutes(m) }))}
+              options={timeSlots.map((m) => ({ value: m, label: formatMinutes(m) }))}
               value={startMinutes}
               onChange={setStartMinutes}
             />
@@ -157,8 +169,8 @@ export function LessonForm({
 
           <Field label="Duration">
             <ChipSelect
-              options={DURATIONS.map((d) => ({ value: d, label: `${d} min` }))}
-              value={durationMinutes}
+              options={DURATION_OPTIONS.map((d) => ({ value: d, label: `${d} min` }))}
+              value={effectiveDuration}
               onChange={setDurationMinutes}
             />
           </Field>

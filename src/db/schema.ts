@@ -55,14 +55,21 @@ const SKILL_SYLLABUS: [category: string, skills: string[]][] = [
   ],
 ];
 
+const LATEST_VERSION = 2;
+
 export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = row?.user_version ?? 0;
-  if (version >= 1) {
-    await db.execAsync('PRAGMA foreign_keys = ON;');
-    return;
-  }
+  await db.execAsync('PRAGMA foreign_keys = ON;');
+  if (version >= LATEST_VERSION) return;
 
+  if (version < 1) await migrateToV1(db);
+  if (version < 2) await migrateToV2(db);
+
+  await db.execAsync(`PRAGMA user_version = ${LATEST_VERSION}`);
+}
+
+async function migrateToV1(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -131,6 +138,13 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
 
   // A starter instructor so the app is usable immediately; rename in Settings.
   await db.runAsync('INSERT INTO instructors (name, color) VALUES (?, ?)', 'Me', '#3c87f7');
+}
 
-  await db.execAsync('PRAGMA user_version = 1');
+async function migrateToV2(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
 }

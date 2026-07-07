@@ -10,6 +10,7 @@ import { Chip } from '@/components/ui/chip';
 import { Fab } from '@/components/ui/fab';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { listInstructors, listLessonDays, listLessonsForDay } from '@/db/queries';
+import { getSettings } from '@/db/settings';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, dayOfMonth, monthTitle, startOfWeek, todayKey, weekdayShort, type DateKey } from '@/lib/dates';
@@ -24,6 +25,7 @@ export default function ScheduleScreen() {
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const { data: instructors } = useQuery((db) => listInstructors(db));
+  const { data: settings } = useQuery((db) => getSettings(db));
   const { data: lessons } = useQuery(
     (db) => listLessonsForDay(db, selectedDay, instructorFilter),
     [selectedDay, instructorFilter]
@@ -37,7 +39,14 @@ export default function ScheduleScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <View style={styles.header}>
-          <ThemedText type="subtitle">{monthTitle(selectedDay)}</ThemedText>
+          <View>
+            {!!settings?.schoolName && (
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                {settings.schoolName}
+              </ThemedText>
+            )}
+            <ThemedText type="subtitle">{monthTitle(selectedDay)}</ThemedText>
+          </View>
           <Chip label="Today" selected={selectedDay === todayKey()} onPress={() => setSelectedDay(todayKey())} />
         </View>
 
