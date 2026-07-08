@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { LessonCard } from '@/components/lesson-card';
+import { DayTimeline } from '@/components/day-timeline';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
@@ -37,6 +37,19 @@ export default function ScheduleScreen() {
     (db) => listLessonDays(db, weekStart, addDays(weekStart, 6), instructorFilter),
     [weekStart, instructorFilter]
   );
+
+  const isToday = selectedDay === todayKey();
+  const now = new Date();
+  const nowMinutes = isToday ? now.getHours() * 60 + now.getMinutes() : null;
+
+  // Scroll the timeline to the first lesson (or the working-day start) when the day changes.
+  const timelineRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    const first = visibleLessons[0]?.startMinutes ?? settings.dayStartMinutes;
+    const target = Math.max(0, (first - settings.dayStartMinutes - 30) * 1.1);
+    timelineRef.current?.scrollTo({ y: target, animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay, visibleLessons.length]);
 
   return (
     <ThemedView style={styles.container}>
@@ -114,25 +127,28 @@ export default function ScheduleScreen() {
           </View>
         )}
 
-        <FlatList
-          data={visibleLessons}
-          keyExtractor={(lesson) => String(lesson.id)}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <LessonCard
-              lesson={item}
-              onPress={() => router.push({ pathname: '/lesson/[id]', params: { id: String(item.id) } })}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <ThemedText themeColor="textSecondary">No lessons on this day.</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                Tap + to book one.
-              </ThemedText>
-            </View>
-          }
-        />
+        <ScrollView ref={timelineRef} contentContainerStyle={styles.list}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+            Tap a free slot to book · tap a lesson to edit
+          </ThemedText>
+          <DayTimeline
+            lessons={visibleLessons}
+            dayStartMinutes={settings.dayStartMinutes}
+            dayEndMinutes={settings.dayEndMinutes}
+            slotIntervalMinutes={settings.slotIntervalMinutes}
+            use12HourTime={settings.use12HourTime}
+            nowMinutes={nowMinutes}
+            onPressSlot={(startMinutes) =>
+              router.push({
+                pathname: '/lesson/new',
+                params: { date: selectedDay, startMinutes: String(startMinutes) },
+              })
+            }
+            onPressLesson={(lesson) =>
+              router.push({ pathname: '/lesson/[id]', params: { id: String(lesson.id) } })
+            }
+          />
+        </ScrollView>
       </SafeAreaView>
       <Fab onPress={() => router.push({ pathname: '/lesson/new', params: { date: selectedDay } })} />
     </ThemedView>
@@ -181,12 +197,10 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   list: {
-    gap: Spacing.two,
     paddingBottom: BottomTabInset + Spacing.six,
   },
-  empty: {
-    alignItems: 'center',
-    paddingTop: Spacing.six,
-    gap: Spacing.one,
+  hint: {
+    textAlign: 'center',
+    paddingBottom: Spacing.two,
   },
 });

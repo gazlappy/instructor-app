@@ -29,10 +29,12 @@ export function LessonForm({
   existing,
   initialDate,
   initialStudentId,
+  initialStartMinutes,
 }: {
   existing?: Lesson;
   initialDate?: string;
   initialStudentId?: number;
+  initialStartMinutes?: number;
 }) {
   const db = useSQLiteContext();
   const router = useRouter();
@@ -45,7 +47,7 @@ export function LessonForm({
   const [studentId, setStudentId] = useState<number | null>(existing?.studentId ?? initialStudentId ?? null);
   const [instructorId, setInstructorId] = useState<number | null>(existing?.instructorId ?? null);
   const [date, setDate] = useState(existing?.date ?? initialDate ?? todayKey());
-  const [startMinutes, setStartMinutes] = useState(existing?.startMinutes ?? 9 * 60);
+  const [startMinutes, setStartMinutes] = useState(existing?.startMinutes ?? initialStartMinutes ?? 9 * 60);
   // null = untouched; falls back to the default duration from Settings.
   const [durationMinutes, setDurationMinutes] = useState<number | null>(existing?.durationMinutes ?? null);
   const [type, setType] = useState<LessonType>(existing?.type ?? settings.defaultLessonType);
