@@ -135,14 +135,21 @@ function SettingSwitch({ value, onChange }: { value: boolean; onChange: (value: 
 
 // --- the draft-based settings form ---
 
-function SettingsForm() {
+interface SettingsDraft {
+  draft: AppSettings;
+  dirty: boolean;
+  justSaved: boolean;
+  set: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  onSave: () => Promise<void>;
+  onDiscard: () => void;
+}
+
+/** Draft edits staged on top of the stored settings; nothing applies until saved. */
+function useSettingsDraft(): SettingsDraft {
   const { settings, save } = useAppSettings();
-  const theme = useTheme();
   // Only edited fields live here; everything else follows the stored settings.
   const [overrides, setOverrides] = useState<Partial<AppSettings>>({});
   const [justSaved, setJustSaved] = useState(false);
-  const [blockHours, setBlockHours] = useState('');
-  const [blockPrice, setBlockPrice] = useState('');
 
   const draft: AppSettings = { ...settings, ...overrides };
   const dirty = (Object.keys(overrides) as (keyof AppSettings)[]).some(
@@ -162,10 +169,17 @@ function SettingsForm() {
 
   const onDiscard = () => {
     setOverrides({});
-    setBlockHours('');
-    setBlockPrice('');
     setJustSaved(false);
   };
+
+  return { draft, dirty, justSaved, set, onSave, onDiscard };
+}
+
+function SettingsForm({ form }: { form: SettingsDraft }) {
+  const { draft, set } = form;
+  const theme = useTheme();
+  const [blockHours, setBlockHours] = useState('');
+  const [blockPrice, setBlockPrice] = useState('');
 
   const toggleDuration = (minutes: number) => {
     const enabled = new Set(draft.durationOptions);
@@ -367,21 +381,30 @@ function SettingsForm() {
         </ThemedView>
       </SettingsSection>
 
-      {(dirty || justSaved) && (
-        <View style={styles.saveBar}>
-          {justSaved && !dirty ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              Settings saved ✓
-            </ThemedText>
-          ) : (
-            <>
-              <Chip label="Discard" onPress={onDiscard} />
-              <Chip label="Save settings" selected onPress={onSave} />
-            </>
-          )}
-        </View>
-      )}
     </>
+  );
+}
+
+/** Floating bar pinned to the bottom of the screen while there are unsaved changes. */
+function SaveBar({ form }: { form: SettingsDraft }) {
+  const { dirty, justSaved, onSave, onDiscard } = form;
+  if (!dirty && !justSaved) return null;
+
+  return (
+    <View style={styles.saveBarContainer} pointerEvents="box-none">
+      <ThemedView type="backgroundElement" style={styles.saveBar}>
+        {justSaved && !dirty ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            Settings saved ✓
+          </ThemedText>
+        ) : (
+          <>
+            <Chip label="Discard" onPress={onDiscard} />
+            <Chip label="Save settings" selected onPress={onSave} />
+          </>
+        )}
+      </ThemedView>
+    </View>
   );
 }
 
@@ -541,6 +564,7 @@ function DangerZone({ onErased }: { onErased: () => void }) {
 
 export default function SettingsScreen() {
   const { reload } = useAppSettings();
+  const form = useSettingsDraft();
   // Bumped after "erase all data" to remount everything with fresh values.
   const [resetCount, setResetCount] = useState(0);
   const [openSection, setOpenSection] = useState<string | null>(null);
@@ -562,11 +586,12 @@ export default function SettingsScreen() {
 
           <AccordionContext.Provider value={accordion}>
             <View key={resetCount} style={styles.sections}>
-              <SettingsForm />
+              <SettingsForm form={form} />
               <InstructorsSection />
               <DangerZone
                 onErased={async () => {
                   await reload();
+                  form.onDiscard();
                   setResetCount((c) => c + 1);
                 }}
               />
@@ -577,6 +602,7 @@ export default function SettingsScreen() {
             Data is stored locally on this device.
           </ThemedText>
         </ScrollView>
+        <SaveBar form={form} />
       </SafeAreaView>
     </ThemedView>
   );
@@ -708,11 +734,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: Spacing.two,
   },
+  saveBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: BottomTabInset + Spacing.three,
+    alignItems: 'center',
+  },
   saveBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    elevation: 6,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
   },
   footer: {
     textAlign: 'center',
