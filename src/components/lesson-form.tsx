@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
+import { DateInput } from '@/components/ui/date-input';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
@@ -21,7 +22,7 @@ import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
-import { addDays, formatMinutes, shortDayTitle, todayKey } from '@/lib/dates';
+import { formatMinutes, todayKey } from '@/lib/dates';
 
 
 export function LessonForm({
@@ -54,13 +55,6 @@ export function LessonForm({
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [status, setStatus] = useState<LessonStatus>(existing?.status ?? 'scheduled');
-
-  const dateOptions = useMemo(() => {
-    const start = addDays(todayKey(), -7);
-    const days = Array.from({ length: 60 }, (_, i) => addDays(start, i));
-    if (!days.includes(date)) days.unshift(date);
-    return days.map((d) => ({ value: d, label: shortDayTitle(d) }));
-  }, [date]);
 
   const selectableStudents = useMemo(
     () => (students ?? []).filter((s) => s.status !== 'passed' || s.id === studentId),
@@ -165,7 +159,7 @@ export function LessonForm({
           </Field>
 
           <Field label="Date">
-            <ChipSelect options={dateOptions} value={date} onChange={setDate} />
+            <DateInput value={date} onChange={setDate} allowClear={false} />
           </Field>
 
           <Field label="Start time">

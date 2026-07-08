@@ -32,10 +32,13 @@ export function DateInput({
   value,
   onChange,
   placeholder = 'Not set',
+  allowClear = true,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Set false for required dates (hides the Clear action). */
+  allowClear?: boolean;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
@@ -148,7 +151,9 @@ export function DateInput({
               </View>
 
               <View style={styles.footer}>
-                {!!value && <Chip label="Clear" onPress={() => { onChange(''); setOpen(false); }} />}
+                {allowClear && !!value && (
+                  <Chip label="Clear" onPress={() => { onChange(''); setOpen(false); }} />
+                )}
                 <View style={styles.spacer} />
                 <Chip
                   label="Today"
