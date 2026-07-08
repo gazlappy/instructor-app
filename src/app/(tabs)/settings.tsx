@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
-import { type ReactNode, useState } from 'react';
+import { createContext, type ReactNode, useContext, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,28 +40,35 @@ const STUDENT_SORT_LABELS: Record<StudentSort, string> = { name: 'Name', nextLes
 
 // --- building blocks ---
 
+/** Accordion state shared by all sections: opening one closes the others. */
+const AccordionContext = createContext<{ open: string | null; toggle: (title: string) => void }>({
+  open: null,
+  toggle: () => {},
+});
+
 /** Collapsible section, closed by default to keep the screen tidy. */
 function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const { open, toggle } = useContext(AccordionContext);
+  const isOpen = open === title;
   const theme = useTheme();
 
   return (
     <View>
       <Pressable
-        onPress={() => setOpen((value) => !value)}
+        onPress={() => toggle(title)}
         style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}>
         <SymbolView
           name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
           size={14}
           weight="bold"
           tintColor={theme.textSecondary}
-          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
+          style={{ transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}
         />
         <ThemedText type="smallBold" themeColor="textSecondary">
           {title}
         </ThemedText>
       </Pressable>
-      {open && (
+      {isOpen && (
         <Animated.View entering={FadeIn.duration(150)} style={styles.sectionBody}>
           {children}
         </Animated.View>
@@ -536,6 +543,14 @@ export default function SettingsScreen() {
   const { reload } = useAppSettings();
   // Bumped after "erase all data" to remount everything with fresh values.
   const [resetCount, setResetCount] = useState(0);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const accordion = useMemo(
+    () => ({
+      open: openSection,
+      toggle: (title: string) => setOpenSection((current) => (current === title ? null : title)),
+    }),
+    [openSection]
+  );
 
   return (
     <ThemedView style={styles.container}>
@@ -545,16 +560,18 @@ export default function SettingsScreen() {
             Settings
           </ThemedText>
 
-          <View key={resetCount} style={styles.sections}>
-            <SettingsForm />
-            <InstructorsSection />
-            <DangerZone
-              onErased={async () => {
-                await reload();
-                setResetCount((c) => c + 1);
-              }}
-            />
-          </View>
+          <AccordionContext.Provider value={accordion}>
+            <View key={resetCount} style={styles.sections}>
+              <SettingsForm />
+              <InstructorsSection />
+              <DangerZone
+                onErased={async () => {
+                  await reload();
+                  setResetCount((c) => c + 1);
+                }}
+              />
+            </View>
+          </AccordionContext.Provider>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
             Data is stored locally on this device.
