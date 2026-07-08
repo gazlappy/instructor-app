@@ -25,7 +25,7 @@ import {
 } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
-import { fromDateKey, shortDayTitle, todayKey } from '@/lib/dates';
+import { formatDateUK, fromDateKey, shortDayTitle, todayKey } from '@/lib/dates';
 import { mapsUrl } from '@/lib/links';
 
 function ageFromDob(dob: string): number | null {
@@ -106,10 +106,10 @@ export default function StudentDetailScreen() {
     TRANSMISSION_LABELS[student.transmission],
     student.licenceNumber && `Licence: ${student.licenceNumber}`,
     student.theoryPassed
-      ? `Theory passed${student.theoryTestDate ? ` ${student.theoryTestDate}` : ''} ✓`
+      ? `Theory passed${student.theoryTestDate ? ` ${formatDateUK(student.theoryTestDate)}` : ''} ✓`
       : 'Theory not passed yet',
     student.testDate &&
-      `Driving test: ${student.testDate}${student.testCentre ? ` at ${student.testCentre}` : ''}`,
+      `Driving test: ${formatDateUK(student.testDate)}${student.testCentre ? ` at ${student.testCentre}` : ''}`,
   ].filter(Boolean) as string[];
 
   return (

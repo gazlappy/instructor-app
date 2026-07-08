@@ -57,6 +57,13 @@ export function shortDayTitle(key: DateKey): string {
   return `${weekdayShort(key)} ${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)}`;
 }
 
+/** 'YYYY-MM-DD' → UK-standard 'DD/MM/YYYY' for display (storage stays ISO). */
+export function formatDateUK(key: DateKey): string {
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return key;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
 /** Minutes-past-midnight → "09:30" (24h) or "9:30 am" (12h). */
 export function formatMinutes(minutes: number, use12Hour = false): string {
   const h = Math.floor(minutes / 60) % 24;

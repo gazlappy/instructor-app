@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
+import { DateInput } from '@/components/ui/date-input';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createStudent, deleteStudent, listInstructors, updateStudent } from '@/db/queries';
@@ -20,8 +21,6 @@ import {
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function StudentForm({ existing }: { existing?: Student }) {
   const db = useSQLiteContext();
@@ -58,17 +57,6 @@ export function StudentForm({ existing }: { existing?: Student }) {
       showAlert('Add an instructor first', 'Create an instructor in the Settings tab, then add students.');
       return;
     }
-    const dates: [label: string, value: string][] = [
-      ['date of birth', dateOfBirth.trim()],
-      ['theory test date', theoryTestDate.trim()],
-      ['test date', testDate.trim()],
-    ];
-    for (const [label, value] of dates) {
-      if (value && !DATE_PATTERN.test(value)) {
-        showAlert(`Invalid ${label}`, 'Use the format YYYY-MM-DD, e.g. 2026-09-15.');
-        return;
-      }
-    }
     const input = {
       instructorId: effectiveInstructorId,
       firstName: firstName.trim(),
@@ -76,12 +64,12 @@ export function StudentForm({ existing }: { existing?: Student }) {
       phone: phone.trim() || null,
       email: email.trim() || null,
       pickupAddress: pickupAddress.trim() || null,
-      dateOfBirth: dateOfBirth.trim() || null,
+      dateOfBirth: dateOfBirth || null,
       licenceNumber: licenceNumber.trim() || null,
       transmission,
       theoryPassed,
-      theoryTestDate: theoryTestDate.trim() || null,
-      testDate: testDate.trim() || null,
+      theoryTestDate: theoryTestDate || null,
+      testDate: testDate || null,
       testCentre: testCentre.trim() || null,
       emergencyContact: emergencyContact.trim() || null,
       status,
@@ -163,8 +151,8 @@ export function StudentForm({ existing }: { existing?: Student }) {
           <ThemedText type="smallBold" themeColor="textSecondary" style={styles.groupHeader}>
             LICENCE & TESTS
           </ThemedText>
-          <Field label="Date of birth (YYYY-MM-DD)">
-            <FormInput value={dateOfBirth} onChangeText={setDateOfBirth} placeholder="2008-03-21" />
+          <Field label="Date of birth">
+            <DateInput value={dateOfBirth} onChange={setDateOfBirth} />
           </Field>
           <Field label="Provisional licence number">
             <FormInput value={licenceNumber} onChangeText={setLicenceNumber} autoCapitalize="characters" />
@@ -190,12 +178,12 @@ export function StudentForm({ existing }: { existing?: Student }) {
             />
           </View>
           {theoryPassed && (
-            <Field label="Theory passed on (YYYY-MM-DD)">
-              <FormInput value={theoryTestDate} onChangeText={setTheoryTestDate} placeholder="2026-05-01" />
+            <Field label="Theory passed on">
+              <DateInput value={theoryTestDate} onChange={setTheoryTestDate} />
             </Field>
           )}
-          <Field label="Driving test date (YYYY-MM-DD)">
-            <FormInput value={testDate} onChangeText={setTestDate} placeholder="2026-09-15" />
+          <Field label="Driving test date">
+            <DateInput value={testDate} onChange={setTestDate} />
           </Field>
           <Field label="Test centre">
             <FormInput value={testCentre} onChangeText={setTestCentre} />

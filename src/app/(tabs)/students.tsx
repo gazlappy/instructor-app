@@ -13,7 +13,7 @@ import { STUDENT_STATUS_LABELS, type StudentListItem } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
-import { todayKey } from '@/lib/dates';
+import { formatDateUK, todayKey } from '@/lib/dates';
 
 function initials(student: StudentListItem): string {
   return `${student.firstName[0] ?? ''}${student.lastName[0] ?? ''}`.toUpperCase();
@@ -63,7 +63,7 @@ export default function StudentsScreen() {
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
                     {item.instructorName}
-                    {item.testDate ? ` · Test ${item.testDate}` : ''}
+                    {item.testDate ? ` · Test ${formatDateUK(item.testDate)}` : ''}
                   </ThemedText>
                 </View>
                 {item.status !== 'active' && (
