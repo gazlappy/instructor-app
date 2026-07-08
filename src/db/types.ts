@@ -1,4 +1,5 @@
 export type StudentStatus = 'active' | 'passed' | 'paused';
+export type Transmission = 'manual' | 'automatic';
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 export type LessonType = 'lesson' | 'mock_test' | 'driving_test';
 
@@ -19,10 +20,28 @@ export interface Student {
   phone: string | null;
   email: string | null;
   pickupAddress: string | null;
+  dateOfBirth: string | null;
+  licenceNumber: string | null;
+  transmission: Transmission;
+  theoryPassed: number; // 0/1
+  theoryTestDate: string | null;
   testDate: string | null;
+  testCentre: string | null;
+  emergencyContact: string | null;
   status: StudentStatus;
   notes: string | null;
 }
+
+export interface StudentStats {
+  completedLessons: number;
+  completedMinutes: number;
+  upcomingLessons: number;
+}
+
+export const TRANSMISSION_LABELS: Record<Transmission, string> = {
+  manual: 'Manual',
+  automatic: 'Automatic',
+};
 
 export interface StudentListItem extends Student {
   instructorName: string;

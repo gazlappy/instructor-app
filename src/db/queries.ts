@@ -8,7 +8,9 @@ import type {
   LessonType,
   SkillProgressRow,
   StudentListItem,
+  StudentStats,
   StudentStatus,
+  Transmission,
 } from './types';
 
 // --- instructors ---
@@ -57,7 +59,10 @@ export async function setInstructorArchived(db: SQLiteDatabase, id: number, arch
 
 const STUDENT_SELECT = `
   SELECT s.id, s.instructor_id AS instructorId, s.first_name AS firstName, s.last_name AS lastName,
-         s.phone, s.email, s.pickup_address AS pickupAddress, s.test_date AS testDate,
+         s.phone, s.email, s.pickup_address AS pickupAddress,
+         s.date_of_birth AS dateOfBirth, s.licence_number AS licenceNumber, s.transmission,
+         s.theory_passed AS theoryPassed, s.theory_test_date AS theoryTestDate,
+         s.test_date AS testDate, s.test_centre AS testCentre, s.emergency_contact AS emergencyContact,
          s.status, s.notes, i.name AS instructorName, i.color AS instructorColor
   FROM students s JOIN instructors i ON i.id = s.instructor_id`;
 
@@ -121,24 +126,46 @@ export interface StudentInput {
   phone?: string | null;
   email?: string | null;
   pickupAddress?: string | null;
+  dateOfBirth?: string | null;
+  licenceNumber?: string | null;
+  transmission: Transmission;
+  theoryPassed: boolean;
+  theoryTestDate?: string | null;
   testDate?: string | null;
+  testCentre?: string | null;
+  emergencyContact?: string | null;
   status: StudentStatus;
   notes?: string | null;
 }
 
-export async function createStudent(db: SQLiteDatabase, input: StudentInput): Promise<number> {
-  const result = await db.runAsync(
-    `INSERT INTO students (instructor_id, first_name, last_name, phone, email, pickup_address, test_date, status, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+function studentParams(input: StudentInput): (string | number | null)[] {
+  return [
     input.instructorId,
     input.firstName,
     input.lastName,
     input.phone ?? null,
     input.email ?? null,
     input.pickupAddress ?? null,
+    input.dateOfBirth ?? null,
+    input.licenceNumber ?? null,
+    input.transmission,
+    input.theoryPassed ? 1 : 0,
+    input.theoryTestDate ?? null,
     input.testDate ?? null,
+    input.testCentre ?? null,
+    input.emergencyContact ?? null,
     input.status,
-    input.notes ?? null
+    input.notes ?? null,
+  ];
+}
+
+export async function createStudent(db: SQLiteDatabase, input: StudentInput): Promise<number> {
+  const result = await db.runAsync(
+    `INSERT INTO students (instructor_id, first_name, last_name, phone, email, pickup_address,
+       date_of_birth, licence_number, transmission, theory_passed, theory_test_date,
+       test_date, test_centre, emergency_contact, status, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ...studentParams(input)
   );
   return result.lastInsertRowId;
 }
@@ -146,18 +173,30 @@ export async function createStudent(db: SQLiteDatabase, input: StudentInput): Pr
 export async function updateStudent(db: SQLiteDatabase, id: number, input: StudentInput): Promise<void> {
   await db.runAsync(
     `UPDATE students SET instructor_id = ?, first_name = ?, last_name = ?, phone = ?, email = ?,
-       pickup_address = ?, test_date = ?, status = ?, notes = ? WHERE id = ?`,
-    input.instructorId,
-    input.firstName,
-    input.lastName,
-    input.phone ?? null,
-    input.email ?? null,
-    input.pickupAddress ?? null,
-    input.testDate ?? null,
-    input.status,
-    input.notes ?? null,
+       pickup_address = ?, date_of_birth = ?, licence_number = ?, transmission = ?,
+       theory_passed = ?, theory_test_date = ?, test_date = ?, test_centre = ?,
+       emergency_contact = ?, status = ?, notes = ? WHERE id = ?`,
+    ...studentParams(input),
     id
   );
+}
+
+/** Lesson totals for a student's detail page. */
+export function getStudentStats(db: SQLiteDatabase, studentId: number, today: string): Promise<StudentStats> {
+  return db
+    .getFirstAsync<StudentStats>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completedLessons,
+         COALESCE(SUM(CASE WHEN status = 'completed' THEN duration_minutes ELSE 0 END), 0) AS completedMinutes,
+         COALESCE(SUM(CASE WHEN status = 'scheduled' AND date >= ? THEN 1 ELSE 0 END), 0) AS upcomingLessons
+       FROM lessons WHERE student_id = ?`,
+      today,
+      studentId
+    )
+    .then(
+      (row) =>
+        row ?? { completedLessons: 0, completedMinutes: 0, upcomingLessons: 0 }
+    );
 }
 
 export async function deleteStudent(db: SQLiteDatabase, id: number): Promise<void> {

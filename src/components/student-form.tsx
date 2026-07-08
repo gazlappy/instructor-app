@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -9,7 +9,13 @@ import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createStudent, deleteStudent, listInstructors, updateStudent } from '@/db/queries';
-import { STUDENT_STATUS_LABELS, type Student, type StudentStatus } from '@/db/types';
+import {
+  STUDENT_STATUS_LABELS,
+  TRANSMISSION_LABELS,
+  type Student,
+  type StudentStatus,
+  type Transmission,
+} from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
@@ -28,7 +34,14 @@ export function StudentForm({ existing }: { existing?: Student }) {
   const [phone, setPhone] = useState(existing?.phone ?? '');
   const [email, setEmail] = useState(existing?.email ?? '');
   const [pickupAddress, setPickupAddress] = useState(existing?.pickupAddress ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(existing?.dateOfBirth ?? '');
+  const [licenceNumber, setLicenceNumber] = useState(existing?.licenceNumber ?? '');
+  const [transmission, setTransmission] = useState<Transmission>(existing?.transmission ?? 'manual');
+  const [theoryPassed, setTheoryPassed] = useState(!!existing?.theoryPassed);
+  const [theoryTestDate, setTheoryTestDate] = useState(existing?.theoryTestDate ?? '');
   const [testDate, setTestDate] = useState(existing?.testDate ?? '');
+  const [testCentre, setTestCentre] = useState(existing?.testCentre ?? '');
+  const [emergencyContact, setEmergencyContact] = useState(existing?.emergencyContact ?? '');
   const [status, setStatus] = useState<StudentStatus>(existing?.status ?? 'active');
   const [notes, setNotes] = useState(existing?.notes ?? '');
 
@@ -44,10 +57,16 @@ export function StudentForm({ existing }: { existing?: Student }) {
       showAlert('Add an instructor first', 'Create an instructor in the Settings tab, then add students.');
       return;
     }
-    const trimmedDate = testDate.trim();
-    if (trimmedDate && !DATE_PATTERN.test(trimmedDate)) {
-      showAlert('Invalid test date', 'Use the format YYYY-MM-DD, e.g. 2026-09-15.');
-      return;
+    const dates: [label: string, value: string][] = [
+      ['date of birth', dateOfBirth.trim()],
+      ['theory test date', theoryTestDate.trim()],
+      ['test date', testDate.trim()],
+    ];
+    for (const [label, value] of dates) {
+      if (value && !DATE_PATTERN.test(value)) {
+        showAlert(`Invalid ${label}`, 'Use the format YYYY-MM-DD, e.g. 2026-09-15.');
+        return;
+      }
     }
     const input = {
       instructorId: effectiveInstructorId,
@@ -56,7 +75,14 @@ export function StudentForm({ existing }: { existing?: Student }) {
       phone: phone.trim() || null,
       email: email.trim() || null,
       pickupAddress: pickupAddress.trim() || null,
-      testDate: trimmedDate || null,
+      dateOfBirth: dateOfBirth.trim() || null,
+      licenceNumber: licenceNumber.trim() || null,
+      transmission,
+      theoryPassed,
+      theoryTestDate: theoryTestDate.trim() || null,
+      testDate: testDate.trim() || null,
+      testCentre: testCentre.trim() || null,
+      emergencyContact: emergencyContact.trim() || null,
       status,
       notes: notes.trim() || null,
     };
@@ -109,6 +135,9 @@ export function StudentForm({ existing }: { existing?: Student }) {
             />
           </Field>
 
+          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.groupHeader}>
+            CONTACT
+          </ThemedText>
           <Field label="Phone">
             <FormInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           </Field>
@@ -118,10 +147,58 @@ export function StudentForm({ existing }: { existing?: Student }) {
           <Field label="Pickup address">
             <FormInput value={pickupAddress} onChangeText={setPickupAddress} />
           </Field>
-          <Field label="Test date (YYYY-MM-DD)">
-            <FormInput value={testDate} onChangeText={setTestDate} placeholder="2026-09-15" />
+          <Field label="Emergency contact">
+            <FormInput
+              value={emergencyContact}
+              onChangeText={setEmergencyContact}
+              placeholder="e.g. Sam (mum) — 07700 900000"
+            />
           </Field>
 
+          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.groupHeader}>
+            LICENCE & TESTS
+          </ThemedText>
+          <Field label="Date of birth (YYYY-MM-DD)">
+            <FormInput value={dateOfBirth} onChangeText={setDateOfBirth} placeholder="2008-03-21" />
+          </Field>
+          <Field label="Provisional licence number">
+            <FormInput value={licenceNumber} onChangeText={setLicenceNumber} autoCapitalize="characters" />
+          </Field>
+          <Field label="Transmission">
+            <ChipSelect
+              options={(Object.keys(TRANSMISSION_LABELS) as Transmission[]).map((t) => ({
+                value: t,
+                label: TRANSMISSION_LABELS[t],
+              }))}
+              value={transmission}
+              onChange={setTransmission}
+            />
+          </Field>
+          <View style={styles.switchRow}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Theory test passed
+            </ThemedText>
+            <Switch
+              value={theoryPassed}
+              onValueChange={setTheoryPassed}
+              trackColor={{ true: theme.tint, false: theme.backgroundSelected }}
+            />
+          </View>
+          {theoryPassed && (
+            <Field label="Theory passed on (YYYY-MM-DD)">
+              <FormInput value={theoryTestDate} onChangeText={setTheoryTestDate} placeholder="2026-05-01" />
+            </Field>
+          )}
+          <Field label="Driving test date (YYYY-MM-DD)">
+            <FormInput value={testDate} onChangeText={setTestDate} placeholder="2026-09-15" />
+          </Field>
+          <Field label="Test centre">
+            <FormInput value={testCentre} onChangeText={setTestCentre} />
+          </Field>
+
+          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.groupHeader}>
+            OTHER
+          </ThemedText>
           {existing && (
             <Field label="Status">
               <ChipSelect
@@ -175,6 +252,14 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     gap: Spacing.three,
+  },
+  groupHeader: {
+    paddingTop: Spacing.two,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   buttons: {
     flexDirection: 'row',

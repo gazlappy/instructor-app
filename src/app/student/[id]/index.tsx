@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { LessonCard } from '@/components/lesson-card';
 import { ThemedText } from '@/components/themed-text';
@@ -9,11 +9,48 @@ import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { LevelDots } from '@/components/ui/level-dots';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { getProgressForStudent, getStudent, listUpcomingLessonsForStudent, setSkillLevel } from '@/db/queries';
-import { MAX_SKILL_LEVEL, SKILL_LEVELS, STUDENT_STATUS_LABELS, type SkillProgressRow } from '@/db/types';
+import {
+  getProgressForStudent,
+  getStudent,
+  getStudentStats,
+  listUpcomingLessonsForStudent,
+  setSkillLevel,
+} from '@/db/queries';
+import {
+  MAX_SKILL_LEVEL,
+  SKILL_LEVELS,
+  STUDENT_STATUS_LABELS,
+  TRANSMISSION_LABELS,
+  type SkillProgressRow,
+} from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
-import { shortDayTitle, todayKey } from '@/lib/dates';
+import { fromDateKey, shortDayTitle, todayKey } from '@/lib/dates';
+
+function ageFromDob(dob: string): number | null {
+  const birth = fromDateKey(dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < birth.getMonth() ||
+    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+function StatTile({ value, label }: { value: string; label: string }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.statTile}>
+      <ThemedText type="subtitle" style={styles.statValue}>
+        {value}
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+    </ThemedView>
+  );
+}
 
 export default function StudentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,6 +68,7 @@ export default function StudentDetailScreen() {
     (db) => listUpcomingLessonsForStudent(db, studentId, todayKey()),
     [studentId]
   );
+  const { data: stats } = useQuery((db) => getStudentStats(db, studentId, todayKey()), [studentId]);
 
   const grouped = useMemo(() => {
     const groups: { category: string; skills: SkillProgressRow[] }[] = [];
@@ -50,11 +88,25 @@ export default function StudentDetailScreen() {
 
   if (!student) return <ThemedView style={styles.container} />;
 
-  const contactLines = [
-    student.phone && `📞 ${student.phone}`,
-    student.email && `✉️ ${student.email}`,
-    student.pickupAddress && `📍 ${student.pickupAddress}`,
-    student.testDate && `🗓 Test: ${student.testDate}`,
+  const age = student.dateOfBirth ? ageFromDob(student.dateOfBirth) : null;
+  const hoursDriven = (stats?.completedMinutes ?? 0) / 60;
+
+  const contactRows: { text: string; url?: string }[] = [
+    student.phone ? { text: `📞 ${student.phone}`, url: `tel:${student.phone.replace(/\s/g, '')}` } : null,
+    student.email ? { text: `✉️ ${student.email}`, url: `mailto:${student.email}` } : null,
+    student.pickupAddress ? { text: `📍 ${student.pickupAddress}` } : null,
+    student.emergencyContact ? { text: `🆘 ${student.emergencyContact}` } : null,
+  ].filter(Boolean) as { text: string; url?: string }[];
+
+  const licenceLines = [
+    age !== null && `${age} years old`,
+    TRANSMISSION_LABELS[student.transmission],
+    student.licenceNumber && `Licence: ${student.licenceNumber}`,
+    student.theoryPassed
+      ? `Theory passed${student.theoryTestDate ? ` ${student.theoryTestDate}` : ''} ✓`
+      : 'Theory not passed yet',
+    student.testDate &&
+      `Driving test: ${student.testDate}${student.testCentre ? ` at ${student.testCentre}` : ''}`,
   ].filter(Boolean) as string[];
 
   return (
@@ -76,9 +128,39 @@ export default function StudentDetailScreen() {
           />
         </View>
 
-        {contactLines.length > 0 && (
+        <View style={styles.statRow}>
+          <StatTile value={String(stats?.completedLessons ?? 0)} label="Lessons done" />
+          <StatTile
+            value={hoursDriven % 1 === 0 ? String(hoursDriven) : hoursDriven.toFixed(1)}
+            label="Hours driven"
+          />
+          <StatTile value={`${overallPct}%`} label="Progress" />
+        </View>
+
+        {contactRows.length > 0 && (
           <ThemedView type="backgroundElement" style={styles.card}>
-            {contactLines.map((line) => (
+            {contactRows.map((row) =>
+              row.url ? (
+                <Pressable key={row.text} onPress={() => Linking.openURL(row.url!)} hitSlop={4}>
+                  <ThemedText type="small" style={{ color: theme.tint }}>
+                    {row.text}
+                  </ThemedText>
+                </Pressable>
+              ) : (
+                <ThemedText type="small" key={row.text}>
+                  {row.text}
+                </ThemedText>
+              )
+            )}
+          </ThemedView>
+        )}
+
+        {licenceLines.length > 0 && (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              LICENCE & TESTS
+            </ThemedText>
+            {licenceLines.map((line) => (
               <ThemedText type="small" key={line}>
                 {line}
               </ThemedText>
@@ -184,6 +266,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  statTile: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: Spacing.three,
+    paddingVertical: Spacing.three,
+    gap: Spacing.half,
+  },
+  statValue: {
+    fontSize: 24,
+    lineHeight: 30,
   },
   card: {
     borderRadius: Spacing.three,

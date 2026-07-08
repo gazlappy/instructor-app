@@ -55,7 +55,7 @@ const SKILL_SYLLABUS: [category: string, skills: string[]][] = [
   ],
 ];
 
-const LATEST_VERSION = 2;
+const LATEST_VERSION = 3;
 
 export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -65,6 +65,7 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
 
   if (version < 1) await migrateToV1(db);
   if (version < 2) await migrateToV2(db);
+  if (version < 3) await migrateToV3(db);
 
   await db.execAsync(`PRAGMA user_version = ${LATEST_VERSION}`);
 }
@@ -146,6 +147,18 @@ async function migrateToV2(db: SQLiteDatabase): Promise<void> {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+  `);
+}
+
+async function migrateToV3(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    ALTER TABLE students ADD COLUMN date_of_birth TEXT;
+    ALTER TABLE students ADD COLUMN licence_number TEXT;
+    ALTER TABLE students ADD COLUMN transmission TEXT NOT NULL DEFAULT 'manual';
+    ALTER TABLE students ADD COLUMN theory_passed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE students ADD COLUMN theory_test_date TEXT;
+    ALTER TABLE students ADD COLUMN test_centre TEXT;
+    ALTER TABLE students ADD COLUMN emergency_contact TEXT;
   `);
 }
 
