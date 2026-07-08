@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -214,7 +215,11 @@ export function LessonForm({
           )}
 
           <Field label="Pickup location">
-            <FormInput value={effectivePickup} onChangeText={setPickupLocation} />
+            <AddressInput
+              value={effectivePickup}
+              onChange={setPickupLocation}
+              placeholder="Start typing an address…"
+            />
           </Field>
 
           <Field label="Notes">

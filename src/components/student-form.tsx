@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Swit
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -145,7 +146,11 @@ export function StudentForm({ existing }: { existing?: Student }) {
             <FormInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
           </Field>
           <Field label="Pickup address">
-            <FormInput value={pickupAddress} onChangeText={setPickupAddress} />
+            <AddressInput
+              value={pickupAddress}
+              onChange={setPickupAddress}
+              placeholder="Start typing an address…"
+            />
           </Field>
           <Field label="Emergency contact">
             <FormInput
