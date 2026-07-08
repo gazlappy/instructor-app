@@ -12,6 +12,7 @@ import { FormInput } from '@/components/ui/form';
 import { Stepper } from '@/components/ui/stepper';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { createInstructor, listInstructors, setInstructorArchived, updateInstructor } from '@/db/queries';
+import { seedSampleStudents } from '@/db/sample-data';
 import { eraseAllData } from '@/db/schema';
 import {
   CURRENCY_OPTIONS,
@@ -529,11 +530,19 @@ function InstructorsSection() {
   );
 }
 
-// --- danger zone ---
+// --- data section ---
 
-function DangerZone({ onErased }: { onErased: () => void }) {
+function DataSection({ onErased }: { onErased: () => void }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+
+  const addSamples = async () => {
+    const added = await seedSampleStudents(db);
+    showAlert(
+      added > 0 ? `Added ${added} sample students` : 'Sample students already added',
+      added > 0 ? 'Find them in the Students tab.' : undefined
+    );
+  };
 
   const confirmErase = () => {
     confirmDestructive(
@@ -548,7 +557,12 @@ function DangerZone({ onErased }: { onErased: () => void }) {
   };
 
   return (
-    <SettingsSection title="DANGER ZONE">
+    <SettingsSection title="DATA">
+      <Pressable onPress={addSamples} style={({ pressed }) => pressed && styles.pressed}>
+        <ThemedView type="backgroundElement" style={styles.row}>
+          <ThemedText type="small">Add 10 sample students</ThemedText>
+        </ThemedView>
+      </Pressable>
       <Pressable onPress={confirmErase} style={({ pressed }) => pressed && styles.pressed}>
         <ThemedView type="backgroundElement" style={styles.row}>
           <ThemedText type="small" style={{ color: theme.danger }}>
@@ -588,7 +602,7 @@ export default function SettingsScreen() {
             <View key={resetCount} style={styles.sections}>
               <SettingsForm form={form} />
               <InstructorsSection />
-              <DangerZone
+              <DataSection
                 onErased={async () => {
                   await reload();
                   form.onDiscard();
