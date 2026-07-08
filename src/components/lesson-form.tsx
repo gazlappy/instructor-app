@@ -8,7 +8,8 @@ import { ThemedView } from '@/components/themed-view';
 import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
 import { DateInput } from '@/components/ui/date-input';
-import { ChipSelect, Field, FormInput } from '@/components/ui/form';
+import { Field, FormInput } from '@/components/ui/form';
+import { Select } from '@/components/ui/select';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
 import {
@@ -140,7 +141,8 @@ export function LessonForm({
                 No students yet — add one in the Students tab first.
               </ThemedText>
             ) : (
-              <ChipSelect
+              <Select
+                placeholder="Choose a student…"
                 options={selectableStudents.map((s) => ({
                   value: s.id,
                   label: `${s.firstName} ${s.lastName}`.trim(),
@@ -152,54 +154,67 @@ export function LessonForm({
             )}
           </Field>
 
+          <View style={styles.fieldRow}>
+            <View style={styles.flex}>
+              <Field label="Date">
+                <DateInput value={date} onChange={setDate} allowClear={false} />
+              </Field>
+            </View>
+            <View style={styles.flex}>
+              <Field label="Start time">
+                <Select
+                  options={timeSlots.map((m) => ({
+                    value: m,
+                    label: formatMinutes(m, settings.use12HourTime),
+                  }))}
+                  value={startMinutes}
+                  onChange={setStartMinutes}
+                />
+              </Field>
+            </View>
+          </View>
+
+          <View style={styles.fieldRow}>
+            <View style={styles.flex}>
+              <Field label="Duration">
+                <Select
+                  options={durationChoices.map((d) => ({ value: d, label: `${d} min` }))}
+                  value={effectiveDuration}
+                  onChange={setDurationMinutes}
+                />
+              </Field>
+            </View>
+            <View style={styles.flex}>
+              <Field label="Type">
+                <Select
+                  options={(Object.keys(LESSON_TYPE_LABELS) as LessonType[]).map((t) => ({
+                    value: t,
+                    label: LESSON_TYPE_LABELS[t],
+                  }))}
+                  value={type}
+                  onChange={setType}
+                />
+              </Field>
+            </View>
+          </View>
+          {settings.hourlyRate > 0 && (
+            <ThemedText type="small" themeColor="textSecondary">
+              Estimated price: {settings.currency}
+              {estimatedPrice.toFixed(2).replace(/\.00$/, '')}
+            </ThemedText>
+          )}
+
           <Field label="Instructor">
-            <ChipSelect
+            <Select
               options={(instructors ?? []).map((i) => ({ value: i.id, label: i.name, dotColor: i.color }))}
               value={effectiveInstructorId}
               onChange={setInstructorId}
             />
           </Field>
 
-          <Field label="Date">
-            <DateInput value={date} onChange={setDate} allowClear={false} />
-          </Field>
-
-          <Field label="Start time">
-            <ChipSelect
-              options={timeSlots.map((m) => ({ value: m, label: formatMinutes(m, settings.use12HourTime) }))}
-              value={startMinutes}
-              onChange={setStartMinutes}
-            />
-          </Field>
-
-          <Field label="Duration">
-            <ChipSelect
-              options={durationChoices.map((d) => ({ value: d, label: `${d} min` }))}
-              value={effectiveDuration}
-              onChange={setDurationMinutes}
-            />
-            {settings.hourlyRate > 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
-                Estimated price: {settings.currency}
-                {estimatedPrice.toFixed(2).replace(/\.00$/, '')}
-              </ThemedText>
-            )}
-          </Field>
-
-          <Field label="Type">
-            <ChipSelect
-              options={(Object.keys(LESSON_TYPE_LABELS) as LessonType[]).map((t) => ({
-                value: t,
-                label: LESSON_TYPE_LABELS[t],
-              }))}
-              value={type}
-              onChange={setType}
-            />
-          </Field>
-
           {existing && (
             <Field label="Status">
-              <ChipSelect
+              <Select
                 options={(Object.keys(LESSON_STATUS_LABELS) as LessonStatus[]).map((s) => ({
                   value: s,
                   label: LESSON_STATUS_LABELS[s],
@@ -254,6 +269,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   buttons: {
     flexDirection: 'row',
