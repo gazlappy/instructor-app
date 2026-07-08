@@ -26,6 +26,7 @@ import {
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { fromDateKey, shortDayTitle, todayKey } from '@/lib/dates';
+import { mapsUrl } from '@/lib/links';
 
 function ageFromDob(dob: string): number | null {
   const birth = fromDateKey(dob);
@@ -94,7 +95,9 @@ export default function StudentDetailScreen() {
   const contactRows: { text: string; url?: string }[] = [
     student.phone ? { text: `📞 ${student.phone}`, url: `tel:${student.phone.replace(/\s/g, '')}` } : null,
     student.email ? { text: `✉️ ${student.email}`, url: `mailto:${student.email}` } : null,
-    student.pickupAddress ? { text: `📍 ${student.pickupAddress}` } : null,
+    student.pickupAddress
+      ? { text: `📍 ${student.pickupAddress}`, url: mapsUrl(student.pickupAddress) }
+      : null,
     student.emergencyContact ? { text: `🆘 ${student.emergencyContact}` } : null,
   ].filter(Boolean) as { text: string; url?: string }[];
 
