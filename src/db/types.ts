@@ -68,6 +68,13 @@ export interface LessonListItem extends Lesson {
   instructorColor: string;
 }
 
+export interface Skill {
+  id: number;
+  category: string;
+  name: string;
+  sort: number;
+}
+
 export interface SkillProgressRow {
   skillId: number;
   category: string;

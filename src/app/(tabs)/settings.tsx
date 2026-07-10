@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SyllabusEditor } from '@/components/syllabus-editor';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
@@ -601,6 +602,9 @@ export default function SettingsScreen() {
           <AccordionContext.Provider value={accordion}>
             <View key={resetCount} style={styles.sections}>
               <SettingsForm form={form} />
+              <SettingsSection title="PUPIL PROGRESS">
+                <SyllabusEditor />
+              </SettingsSection>
               <InstructorsSection />
               <DataSection
                 onErased={async () => {

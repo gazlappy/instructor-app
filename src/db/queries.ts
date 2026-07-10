@@ -6,6 +6,7 @@ import type {
   LessonListItem,
   LessonStatus,
   LessonType,
+  Skill,
   SkillProgressRow,
   StudentListItem,
   StudentStats,
@@ -319,6 +320,83 @@ export async function updateLesson(db: SQLiteDatabase, id: number, input: Lesson
 
 export async function deleteLesson(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM lessons WHERE id = ?', id);
+}
+
+// --- syllabus (skills) management ---
+
+export function listSkills(db: SQLiteDatabase): Promise<Skill[]> {
+  return db.getAllAsync<Skill>('SELECT id, category, name, sort FROM skills ORDER BY sort');
+}
+
+export async function renameSkill(db: SQLiteDatabase, id: number, name: string): Promise<void> {
+  await db.runAsync('UPDATE skills SET name = ? WHERE id = ?', name, id);
+}
+
+export async function renameSkillCategory(
+  db: SQLiteDatabase,
+  oldName: string,
+  newName: string
+): Promise<void> {
+  await db.runAsync('UPDATE skills SET category = ? WHERE category = ?', newName, oldName);
+}
+
+/** Deleting a skill also removes any recorded progress for it (FK cascade). */
+export async function deleteSkill(db: SQLiteDatabase, id: number): Promise<void> {
+  await db.runAsync('DELETE FROM skills WHERE id = ?', id);
+}
+
+export async function deleteSkillCategory(db: SQLiteDatabase, category: string): Promise<void> {
+  await db.runAsync('DELETE FROM skills WHERE category = ?', category);
+}
+
+/** Appends a skill at the end of its category block (or the very end for a new category). */
+export async function addSkill(db: SQLiteDatabase, category: string, name: string): Promise<void> {
+  const rows = await listSkills(db);
+  const lastInCategory = [...rows].reverse().find((s) => s.category === category);
+  const newSort = lastInCategory ? lastInCategory.sort + 1 : (rows[rows.length - 1]?.sort ?? -1) + 1;
+  await db.runAsync('UPDATE skills SET sort = sort + 1 WHERE sort >= ?', newSort);
+  await db.runAsync('INSERT INTO skills (category, name, sort) VALUES (?, ?, ?)', category, name, newSort);
+}
+
+/** Swaps a skill with its neighbour within the same category. */
+export async function moveSkill(db: SQLiteDatabase, id: number, direction: -1 | 1): Promise<void> {
+  const rows = await listSkills(db);
+  const index = rows.findIndex((s) => s.id === id);
+  if (index === -1) return;
+  const skill = rows[index];
+  for (let i = index + direction; i >= 0 && i < rows.length; i += direction) {
+    if (rows[i].category === skill.category) {
+      const neighbour = rows[i];
+      await db.runAsync('UPDATE skills SET sort = ? WHERE id = ?', neighbour.sort, skill.id);
+      await db.runAsync('UPDATE skills SET sort = ? WHERE id = ?', skill.sort, neighbour.id);
+      return;
+    }
+    break; // hit another category — already at the edge
+  }
+}
+
+/** Moves a whole category block up/down and resequences every sort value. */
+export async function moveSkillCategory(
+  db: SQLiteDatabase,
+  category: string,
+  direction: -1 | 1
+): Promise<void> {
+  const rows = await listSkills(db);
+  const order: string[] = [];
+  for (const row of rows) {
+    if (!order.includes(row.category)) order.push(row.category);
+  }
+  const index = order.indexOf(category);
+  const target = index + direction;
+  if (index === -1 || target < 0 || target >= order.length) return;
+  [order[index], order[target]] = [order[target], order[index]];
+
+  let sort = 0;
+  for (const cat of order) {
+    for (const row of rows.filter((r) => r.category === cat)) {
+      await db.runAsync('UPDATE skills SET sort = ? WHERE id = ?', sort++, row.id);
+    }
+  }
 }
 
 // --- skill progress ---
