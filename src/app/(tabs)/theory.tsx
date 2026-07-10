@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,12 +11,14 @@ import { Select } from '@/components/ui/select';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { THEORY_QUESTIONS, type TheoryQuestion } from '@/data/theory-questions';
 import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/queries';
+import { type TheoryMode } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateUK } from '@/lib/dates';
 
 const PASS_MARK = 0.86; // the real test needs 43/50
 const CORRECT_COLOR = '#30a46c';
+const SECONDS_PER_QUESTION = 68; // the real test allows 57 minutes for 50 questions
 
 interface QuizQuestion extends TheoryQuestion {
   shuffledOptions: string[];
@@ -32,8 +34,8 @@ function shuffle<T>(items: T[]): T[] {
   return result;
 }
 
-function buildQuiz(length: number): QuizQuestion[] {
-  return shuffle(THEORY_QUESTIONS)
+function buildQuiz(pool: TheoryQuestion[], length: number): QuizQuestion[] {
+  return shuffle(pool)
     .slice(0, length)
     .map((question) => {
       const order = shuffle([0, 1, 2, 3]);
@@ -45,55 +47,123 @@ function buildQuiz(length: number): QuizQuestion[] {
     });
 }
 
+const TOPICS = [...new Set(THEORY_QUESTIONS.map((q) => q.category))].map((category) => ({
+  value: category,
+  label: `${category} (${THEORY_QUESTIONS.filter((q) => q.category === category).length})`,
+}));
+
 const LENGTH_OPTIONS = [
   { value: 10, label: 'Quick — 10 questions' },
   { value: 20, label: 'Standard — 20 questions' },
   { value: THEORY_QUESTIONS.length, label: `Full bank — ${THEORY_QUESTIONS.length} questions` },
 ];
 
+const MODE_TITLES: Record<TheoryMode, string> = {
+  practice: 'Practice',
+  topic: 'Topic practice',
+  mock: 'Mock test',
+};
+
+function formatClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export default function TheoryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
 
   const [phase, setPhase] = useState<'start' | 'quiz' | 'results'>('start');
+  const [mode, setMode] = useState<TheoryMode>('practice');
   const [length, setLength] = useState(10);
+  const [topic, setTopic] = useState<string>(TOPICS[0].value);
   const [studentId, setStudentId] = useState<number>(0); // 0 = nobody
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [index, setIndex] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
   const [score, setScore] = useState(0);
+  const [answers, setAnswers] = useState<(number | null)[]>([]);
+  const answersRef = useRef<(number | null)[]>([]);
+  const [remaining, setRemaining] = useState(0);
+  const finishedRef = useRef(false);
 
   const { data: students } = useQuery((db) => listStudents(db, { includePassed: false }));
   const { data: attempts, refresh: refreshAttempts } = useQuery((db) => listTheoryAttempts(db));
 
-  const start = () => {
-    setQuiz(buildQuiz(length));
+  const start = (startMode: TheoryMode) => {
+    const pool =
+      startMode === 'topic' ? THEORY_QUESTIONS.filter((q) => q.category === topic) : THEORY_QUESTIONS;
+    const quizLength = startMode === 'practice' ? length : pool.length;
+    const questions = buildQuiz(pool, quizLength);
+    setMode(startMode);
+    setQuiz(questions);
     setIndex(0);
     setPicked(null);
     setScore(0);
+    setAnswers(Array(questions.length).fill(null));
+    answersRef.current = Array(questions.length).fill(null);
+    finishedRef.current = false;
+    if (startMode === 'mock') setRemaining(questions.length * SECONDS_PER_QUESTION);
     setPhase('quiz');
   };
 
-  const finish = async (finalScore: number) => {
+  const finish = async (finalScore: number, quizOverride?: QuizQuestion[]) => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setScore(finalScore);
     await createTheoryAttempt(db, {
       studentId: studentId || null,
       score: finalScore,
-      total: quiz.length,
+      total: (quizOverride ?? quiz).length,
+      mode,
+      topic: mode === 'topic' ? topic : null,
     });
     refreshAttempts();
     setPhase('results');
   };
 
+  const scoreFromAnswers = (list: (number | null)[]) =>
+    list.reduce((sum: number, answer, i) => sum + (answer === quiz[i]?.correctIndex ? 1 : 0), 0);
+
+  // Mock test countdown; submits automatically when time runs out.
+  useEffect(() => {
+    if (phase !== 'quiz' || mode !== 'mock') return;
+    const interval = setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          clearInterval(interval);
+          finish(scoreFromAnswers(answersRef.current));
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, mode, quiz]);
+
   const pick = (optionIndex: number) => {
+    if (mode === 'mock') {
+      const next = [...answersRef.current];
+      next[index] = optionIndex;
+      answersRef.current = next;
+      setAnswers(next);
+      if (index + 1 >= quiz.length) {
+        finish(scoreFromAnswers(next));
+      } else {
+        setIndex((i) => i + 1);
+      }
+      return;
+    }
     if (picked !== null) return;
     setPicked(optionIndex);
     if (optionIndex === quiz[index].correctIndex) setScore((s) => s + 1);
   };
 
   const next = () => {
-    const finalScore = score;
     if (index + 1 >= quiz.length) {
-      finish(finalScore);
+      finish(score);
     } else {
       setIndex((i) => i + 1);
       setPicked(null);
@@ -103,6 +173,16 @@ export default function TheoryScreen() {
   const question = quiz[index];
   const percent = quiz.length ? Math.round((score / quiz.length) * 100) : 0;
   const passed = quiz.length > 0 && score / quiz.length >= PASS_MARK;
+
+  const wrongAnswers = useMemo(
+    () =>
+      mode === 'mock' && phase === 'results'
+        ? quiz
+            .map((q, i) => ({ question: q, given: answers[i] }))
+            .filter(({ question: q, given }) => given !== q.correctIndex)
+        : [],
+    [mode, phase, quiz, answers]
+  );
 
   return (
     <ThemedView style={styles.container}>
@@ -114,15 +194,6 @@ export default function TheoryScreen() {
 
           {phase === 'start' && (
             <>
-              <ThemedText type="small" themeColor="textSecondary">
-                Practice questions in the style of the theory test. The real test needs 86% to
-                pass (43 out of 50).
-              </ThemedText>
-
-              <Field label="Quiz length">
-                <Select options={LENGTH_OPTIONS} value={length} onChange={setLength} />
-              </Field>
-
               <Field label="Practising student (optional)">
                 <Select
                   options={[
@@ -138,18 +209,55 @@ export default function TheoryScreen() {
                 />
               </Field>
 
-              <View style={styles.startRow}>
-                <Chip label="Start quiz" selected onPress={start} />
-              </View>
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                QUICK PRACTICE
+              </ThemedText>
+              <ThemedView type="backgroundElement" style={styles.modeCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Random questions with instant feedback and explanations.
+                </ThemedText>
+                <Select options={LENGTH_OPTIONS} value={length} onChange={setLength} />
+                <View style={styles.startRow}>
+                  <Chip label="Start practice" selected onPress={() => start('practice')} />
+                </View>
+              </ThemedView>
+
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                PICK A TOPIC
+              </ThemedText>
+              <ThemedView type="backgroundElement" style={styles.modeCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Drill one category at a time — every question in the topic, instant feedback.
+                </ThemedText>
+                <Select options={TOPICS} value={topic} onChange={setTopic} />
+                <View style={styles.startRow}>
+                  <Chip label="Practise this topic" selected onPress={() => start('topic')} />
+                </View>
+              </ThemedView>
+
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                MOCK TEST
+              </ThemedText>
+              <ThemedView type="backgroundElement" style={styles.modeCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Under test conditions: {THEORY_QUESTIONS.length} questions,{' '}
+                  {formatClock(THEORY_QUESTIONS.length * SECONDS_PER_QUESTION)} on the clock, no
+                  feedback until the end. 86% to pass, then review what you got wrong.
+                </ThemedText>
+                <View style={styles.startRow}>
+                  <Chip label="Start mock test" selected onPress={() => start('mock')} />
+                </View>
+              </ThemedView>
 
               {(attempts ?? []).length > 0 && (
                 <>
-                  <ThemedText type="smallBold" themeColor="textSecondary" style={styles.historyHeader}>
+                  <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
                     RECENT ATTEMPTS
                   </ThemedText>
                   {(attempts ?? []).map((attempt) => {
                     const pct = Math.round((attempt.score / attempt.total) * 100);
                     const ok = attempt.score / attempt.total >= PASS_MARK;
+                    const label = attempt.mode === 'topic' ? (attempt.topic ?? 'Topic') : MODE_TITLES[attempt.mode];
                     return (
                       <ThemedView key={attempt.id} type="backgroundElement" style={styles.attemptRow}>
                         <View style={styles.flex}>
@@ -157,6 +265,8 @@ export default function TheoryScreen() {
                             {attempt.studentFirstName
                               ? `${attempt.studentFirstName} ${attempt.studentLastName ?? ''}`.trim()
                               : 'Practice'}
+                            {' · '}
+                            {label}
                           </ThemedText>
                           <ThemedText type="small" themeColor="textSecondary">
                             {formatDateUK(attempt.takenAt.slice(0, 10))}
@@ -177,17 +287,28 @@ export default function TheoryScreen() {
             <>
               <View style={styles.progressRow}>
                 <ThemedText type="smallBold" themeColor="textSecondary">
-                  Question {index + 1} of {quiz.length}
+                  {MODE_TITLES[mode]} · {index + 1} of {quiz.length}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {question.category}
-                </ThemedText>
+                {mode === 'mock' ? (
+                  <ThemedText
+                    type="smallBold"
+                    style={{ color: remaining < 60 ? theme.danger : theme.textSecondary }}>
+                    ⏱ {formatClock(remaining)}
+                  </ThemedText>
+                ) : (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {question.category}
+                  </ThemedText>
+                )}
               </View>
               <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
                 <View
                   style={[
                     styles.progressFill,
-                    { backgroundColor: theme.tint, width: `${((index + (picked !== null ? 1 : 0)) / quiz.length) * 100}%` },
+                    {
+                      backgroundColor: theme.tint,
+                      width: `${((index + (picked !== null ? 1 : 0)) / quiz.length) * 100}%`,
+                    },
                   ]}
                 />
               </View>
@@ -198,36 +319,43 @@ export default function TheoryScreen() {
                 const isCorrect = optionIndex === question.correctIndex;
                 const isPicked = optionIndex === picked;
                 let background: string = theme.backgroundElement;
-                if (picked !== null && isCorrect) background = CORRECT_COLOR;
-                else if (picked !== null && isPicked && !isCorrect) background = theme.danger;
-                const answered = picked !== null && (isCorrect || isPicked);
+                if (mode !== 'mock' && picked !== null && isCorrect) background = CORRECT_COLOR;
+                else if (mode !== 'mock' && picked !== null && isPicked && !isCorrect)
+                  background = theme.danger;
+                const highlighted = mode !== 'mock' && picked !== null && (isCorrect || isPicked);
                 return (
                   <Pressable
                     key={optionIndex}
                     onPress={() => pick(optionIndex)}
-                    disabled={picked !== null}
+                    disabled={mode !== 'mock' && picked !== null}
                     style={({ pressed }) => [
                       styles.option,
                       { backgroundColor: background },
                       pressed && styles.pressed,
                     ]}>
-                    <ThemedText type="small" style={answered ? { color: '#fff' } : undefined}>
+                    <ThemedText type="small" style={highlighted ? { color: '#fff' } : undefined}>
                       {option}
                     </ThemedText>
                   </Pressable>
                 );
               })}
 
-              {picked !== null && (
+              {mode !== 'mock' && picked !== null && (
                 <>
                   <ThemedView type="backgroundElement" style={styles.explanation}>
-                    <ThemedText type="smallBold" style={{ color: picked === question.correctIndex ? CORRECT_COLOR : theme.danger }}>
+                    <ThemedText
+                      type="smallBold"
+                      style={{ color: picked === question.correctIndex ? CORRECT_COLOR : theme.danger }}>
                       {picked === question.correctIndex ? 'Correct!' : 'Not quite.'}
                     </ThemedText>
                     <ThemedText type="small">{question.explanation}</ThemedText>
                   </ThemedView>
                   <View style={styles.startRow}>
-                    <Chip label={index + 1 >= quiz.length ? 'See results' : 'Next question'} selected onPress={next} />
+                    <Chip
+                      label={index + 1 >= quiz.length ? 'See results' : 'Next question'}
+                      selected
+                      onPress={next}
+                    />
                   </View>
                 </>
               )}
@@ -237,6 +365,10 @@ export default function TheoryScreen() {
           {phase === 'results' && (
             <>
               <ThemedView type="backgroundElement" style={styles.resultCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {MODE_TITLES[mode]}
+                  {mode === 'topic' ? ` — ${topic}` : ''}
+                </ThemedText>
                 <ThemedText type="title" style={{ color: passed ? CORRECT_COLOR : theme.danger }}>
                   {percent}%
                 </ThemedText>
@@ -251,8 +383,40 @@ export default function TheoryScreen() {
               </ThemedView>
               <View style={styles.resultButtons}>
                 <Chip label="Back to start" onPress={() => setPhase('start')} />
-                <Chip label="Try again" selected onPress={start} />
+                <Chip label="Try again" selected onPress={() => start(mode)} />
               </View>
+
+              {wrongAnswers.length > 0 && (
+                <>
+                  <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                    REVIEW — {wrongAnswers.length} TO WORK ON
+                  </ThemedText>
+                  {wrongAnswers.map(({ question: q, given }) => (
+                    <ThemedView key={q.id} type="backgroundElement" style={styles.reviewCard}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {q.category}
+                      </ThemedText>
+                      <ThemedText type="smallBold">{q.question}</ThemedText>
+                      {given !== null && (
+                        <ThemedText type="small" style={{ color: theme.danger }}>
+                          ✗ You answered: {q.shuffledOptions[given]}
+                        </ThemedText>
+                      )}
+                      {given === null && (
+                        <ThemedText type="small" style={{ color: theme.danger }}>
+                          ✗ Not answered (time ran out)
+                        </ThemedText>
+                      )}
+                      <ThemedText type="small" style={{ color: CORRECT_COLOR }}>
+                        ✓ {q.shuffledOptions[q.correctIndex]}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {q.explanation}
+                      </ThemedText>
+                    </ThemedView>
+                  ))}
+                </>
+              )}
             </>
           )}
         </ScrollView>
@@ -282,11 +446,16 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  sectionHeader: {
+    paddingTop: Spacing.two,
+  },
+  modeCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
   startRow: {
     flexDirection: 'row',
-  },
-  historyHeader: {
-    paddingTop: Spacing.two,
   },
   attemptRow: {
     flexDirection: 'row',
@@ -331,6 +500,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: Spacing.two,
+  },
+  reviewCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.one,
   },
   pressed: {
     opacity: 0.7,

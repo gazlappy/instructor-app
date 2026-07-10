@@ -43,12 +43,16 @@ export const TRANSMISSION_LABELS: Record<Transmission, string> = {
   automatic: 'Automatic',
 };
 
+export type TheoryMode = 'practice' | 'topic' | 'mock';
+
 export interface TheoryAttempt {
   id: number;
   studentId: number | null;
   score: number;
   total: number;
   takenAt: string;
+  mode: TheoryMode;
+  topic: string | null;
   studentFirstName: string | null;
   studentLastName: string | null;
 }

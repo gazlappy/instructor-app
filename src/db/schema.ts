@@ -61,7 +61,7 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
   // Stamp the version after each step so an interrupted run resumes cleanly.
-  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4];
+  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4, migrateToV5];
   for (let v = version; v < migrations.length; v++) {
     await migrations[v](db);
     await db.execAsync(`PRAGMA user_version = ${v + 1}`);
@@ -175,6 +175,13 @@ async function migrateToV4(db: SQLiteDatabase): Promise<void> {
       total INTEGER NOT NULL,
       taken_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
+  `);
+}
+
+async function migrateToV5(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    ALTER TABLE theory_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'practice';
+    ALTER TABLE theory_attempts ADD COLUMN topic TEXT;
   `);
 }
 
