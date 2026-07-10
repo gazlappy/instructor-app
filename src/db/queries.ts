@@ -11,6 +11,7 @@ import type {
   StudentListItem,
   StudentStats,
   StudentStatus,
+  TheoryAttempt,
   Transmission,
 } from './types';
 
@@ -320,6 +321,31 @@ export async function updateLesson(db: SQLiteDatabase, id: number, input: Lesson
 
 export async function deleteLesson(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM lessons WHERE id = ?', id);
+}
+
+// --- theory practice attempts ---
+
+export async function createTheoryAttempt(
+  db: SQLiteDatabase,
+  input: { studentId: number | null; score: number; total: number }
+): Promise<void> {
+  await db.runAsync(
+    'INSERT INTO theory_attempts (student_id, score, total) VALUES (?, ?, ?)',
+    input.studentId,
+    input.score,
+    input.total
+  );
+}
+
+export function listTheoryAttempts(db: SQLiteDatabase, limit = 15): Promise<TheoryAttempt[]> {
+  return db.getAllAsync<TheoryAttempt>(
+    `SELECT t.id, t.student_id AS studentId, t.score, t.total, t.taken_at AS takenAt,
+            s.first_name AS studentFirstName, s.last_name AS studentLastName
+     FROM theory_attempts t
+     LEFT JOIN students s ON s.id = t.student_id
+     ORDER BY t.id DESC LIMIT ?`,
+    limit
+  );
 }
 
 // --- syllabus (skills) management ---

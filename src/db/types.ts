@@ -43,6 +43,16 @@ export const TRANSMISSION_LABELS: Record<Transmission, string> = {
   automatic: 'Automatic',
 };
 
+export interface TheoryAttempt {
+  id: number;
+  studentId: number | null;
+  score: number;
+  total: number;
+  takenAt: string;
+  studentFirstName: string | null;
+  studentLastName: string | null;
+}
+
 export interface StudentListItem extends Student {
   instructorName: string;
   instructorColor: string;

@@ -55,19 +55,23 @@ const SKILL_SYLLABUS: [category: string, skills: string[]][] = [
   ],
 ];
 
-const LATEST_VERSION = 3;
-
 export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = row?.user_version ?? 0;
   await db.execAsync('PRAGMA foreign_keys = ON;');
-  if (version >= LATEST_VERSION) return;
 
-  if (version < 1) await migrateToV1(db);
-  if (version < 2) await migrateToV2(db);
-  if (version < 3) await migrateToV3(db);
+  // Stamp the version after each step so an interrupted run resumes cleanly.
+  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4];
+  for (let v = version; v < migrations.length; v++) {
+    await migrations[v](db);
+    await db.execAsync(`PRAGMA user_version = ${v + 1}`);
+  }
 
-  await db.execAsync(`PRAGMA user_version = ${LATEST_VERSION}`);
+  // Safety net: these steps are pure CREATE TABLE IF NOT EXISTS, so re-running
+  // them heals a database whose version was stamped ahead of its actual schema
+  // (e.g. by an interrupted update).
+  await migrateToV2(db);
+  await migrateToV4(db);
 }
 
 async function migrateToV1(db: SQLiteDatabase): Promise<void> {
@@ -162,11 +166,24 @@ async function migrateToV3(db: SQLiteDatabase): Promise<void> {
   `);
 }
 
+async function migrateToV4(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS theory_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+      score INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      taken_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+}
+
 /** Wipes every user record (keeps the skills syllabus) and reseeds the starter instructor. */
 export async function eraseAllData(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     DELETE FROM lessons;
     DELETE FROM skill_progress;
+    DELETE FROM theory_attempts;
     DELETE FROM students;
     DELETE FROM instructors;
     DELETE FROM settings;
