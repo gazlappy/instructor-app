@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ROAD_SIGNS, RoadSign, SIGN_KIND_LABELS, type SignKind } from '@/components/road-sign';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
@@ -23,6 +24,8 @@ const SECONDS_PER_QUESTION = 68.4; // the real test allows 57 minutes for 50 que
 interface QuizQuestion extends TheoryQuestion {
   shuffledOptions: string[];
   correctIndex: number;
+  /** Set for sign-recognition questions: renders the sign graphic. */
+  signId?: string;
 }
 
 function shuffle<T>(items: T[]): T[] {
@@ -66,7 +69,29 @@ const MODE_TITLES: Record<TheoryMode, string> = {
   practice: 'Practice',
   topic: 'Topic practice',
   mock: 'Mock test',
+  signs: 'Sign quiz',
 };
+
+function buildSignQuiz(): QuizQuestion[] {
+  return shuffle(ROAD_SIGNS).map((sign, index) => {
+    const others = shuffle(ROAD_SIGNS.filter((s) => s.id !== sign.id))
+      .slice(0, 3)
+      .map((s) => s.meaning);
+    const options = [sign.meaning, ...others] as [string, string, string, string];
+    const order = shuffle([0, 1, 2, 3]);
+    return {
+      id: 10000 + index,
+      category: 'Road signs',
+      question: 'What does this sign mean?',
+      options,
+      answer: 0,
+      explanation: `${sign.name} — ${sign.meaning}.`,
+      shuffledOptions: order.map((i) => options[i]),
+      correctIndex: order.indexOf(0),
+      signId: sign.id,
+    };
+  });
+}
 
 function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -78,7 +103,7 @@ export default function TheoryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
 
-  const [phase, setPhase] = useState<'start' | 'quiz' | 'results'>('start');
+  const [phase, setPhase] = useState<'start' | 'quiz' | 'results' | 'browse'>('start');
   const [mode, setMode] = useState<TheoryMode>('practice');
   const [length, setLength] = useState(10);
   const [topic, setTopic] = useState<string>(TOPICS[0].value);
@@ -100,7 +125,7 @@ export default function TheoryScreen() {
       startMode === 'topic' ? THEORY_QUESTIONS.filter((q) => q.category === topic) : THEORY_QUESTIONS;
     const quizLength =
       startMode === 'practice' ? length : startMode === 'mock' ? MOCK_LENGTH : pool.length;
-    const questions = buildQuiz(pool, quizLength);
+    const questions = startMode === 'signs' ? buildSignQuiz() : buildQuiz(pool, quizLength);
     setMode(startMode);
     setQuiz(questions);
     setIndex(0);
@@ -241,6 +266,20 @@ export default function TheoryScreen() {
               </ThemedView>
 
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                ROAD SIGNS
+              </ThemedText>
+              <ThemedView type="backgroundElement" style={styles.modeCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Learn the shapes and meanings — {ROAD_SIGNS.length} signs to recognise, or browse
+                  them all as a reference.
+                </ThemedText>
+                <View style={styles.signButtonRow}>
+                  <Chip label="Sign quiz" selected onPress={() => start('signs')} />
+                  <Chip label="Browse signs" onPress={() => setPhase('browse')} />
+                </View>
+              </ThemedView>
+
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
                 MOCK TEST
               </ThemedText>
               <ThemedView type="backgroundElement" style={styles.modeCard}>
@@ -318,6 +357,11 @@ export default function TheoryScreen() {
                 />
               </View>
 
+              {question.signId && (
+                <View style={styles.signGraphic}>
+                  <RoadSign id={question.signId} size={140} />
+                </View>
+              )}
               <ThemedText style={styles.questionText}>{question.question}</ThemedText>
 
               {question.shuffledOptions.map((option, optionIndex) => {
@@ -364,6 +408,32 @@ export default function TheoryScreen() {
                   </View>
                 </>
               )}
+            </>
+          )}
+
+          {phase === 'browse' && (
+            <>
+              <View style={styles.startRow}>
+                <Chip label="‹ Back" onPress={() => setPhase('start')} />
+              </View>
+              {(Object.keys(SIGN_KIND_LABELS) as SignKind[]).map((kind) => (
+                <View key={kind} style={styles.browseGroup}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    {SIGN_KIND_LABELS[kind].toUpperCase()}
+                  </ThemedText>
+                  {ROAD_SIGNS.filter((sign) => sign.kind === kind).map((sign) => (
+                    <ThemedView key={sign.id} type="backgroundElement" style={styles.browseRow}>
+                      <RoadSign id={sign.id} size={56} />
+                      <View style={styles.flex}>
+                        <ThemedText type="smallBold">{sign.name}</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {sign.meaning}
+                        </ThemedText>
+                      </View>
+                    </ThemedView>
+                  ))}
+                </View>
+              ))}
             </>
           )}
 
@@ -461,6 +531,24 @@ const styles = StyleSheet.create({
   },
   startRow: {
     flexDirection: 'row',
+  },
+  signButtonRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  signGraphic: {
+    alignItems: 'center',
+    paddingTop: Spacing.two,
+  },
+  browseGroup: {
+    gap: Spacing.two,
+  },
+  browseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
   },
   attemptRow: {
     flexDirection: 'row',
