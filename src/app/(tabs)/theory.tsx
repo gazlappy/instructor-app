@@ -18,7 +18,7 @@ import { formatDateUK } from '@/lib/dates';
 
 const PASS_MARK = 0.86; // the real test needs 43/50
 const CORRECT_COLOR = '#30a46c';
-const SECONDS_PER_QUESTION = 68; // the real test allows 57 minutes for 50 questions
+const SECONDS_PER_QUESTION = 68.4; // the real test allows 57 minutes for 50 questions
 
 interface QuizQuestion extends TheoryQuestion {
   shuffledOptions: string[];
@@ -54,9 +54,13 @@ const TOPICS = [...new Set(THEORY_QUESTIONS.map((q) => q.category))].map((catego
 
 const LENGTH_OPTIONS = [
   { value: 10, label: 'Quick — 10 questions' },
-  { value: 20, label: 'Standard — 20 questions' },
-  { value: THEORY_QUESTIONS.length, label: `Full bank — ${THEORY_QUESTIONS.length} questions` },
+  { value: 25, label: 'Standard — 25 questions' },
+  { value: 50, label: 'Long — 50 questions' },
 ];
+
+/** The real test is 50 questions in 57 minutes. */
+const MOCK_LENGTH = Math.min(50, THEORY_QUESTIONS.length);
+const MOCK_SECONDS = Math.round(MOCK_LENGTH * SECONDS_PER_QUESTION);
 
 const MODE_TITLES: Record<TheoryMode, string> = {
   practice: 'Practice',
@@ -94,7 +98,8 @@ export default function TheoryScreen() {
   const start = (startMode: TheoryMode) => {
     const pool =
       startMode === 'topic' ? THEORY_QUESTIONS.filter((q) => q.category === topic) : THEORY_QUESTIONS;
-    const quizLength = startMode === 'practice' ? length : pool.length;
+    const quizLength =
+      startMode === 'practice' ? length : startMode === 'mock' ? MOCK_LENGTH : pool.length;
     const questions = buildQuiz(pool, quizLength);
     setMode(startMode);
     setQuiz(questions);
@@ -104,7 +109,7 @@ export default function TheoryScreen() {
     setAnswers(Array(questions.length).fill(null));
     answersRef.current = Array(questions.length).fill(null);
     finishedRef.current = false;
-    if (startMode === 'mock') setRemaining(questions.length * SECONDS_PER_QUESTION);
+    if (startMode === 'mock') setRemaining(Math.round(questions.length * SECONDS_PER_QUESTION));
     setPhase('quiz');
   };
 
@@ -240,9 +245,9 @@ export default function TheoryScreen() {
               </ThemedText>
               <ThemedView type="backgroundElement" style={styles.modeCard}>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Under test conditions: {THEORY_QUESTIONS.length} questions,{' '}
-                  {formatClock(THEORY_QUESTIONS.length * SECONDS_PER_QUESTION)} on the clock, no
-                  feedback until the end. 86% to pass, then review what you got wrong.
+                  Under test conditions, like the real thing: {MOCK_LENGTH} questions,{' '}
+                  {formatClock(MOCK_SECONDS)} on the clock, no feedback until the end. 86% to
+                  pass, then review what you got wrong.
                 </ThemedText>
                 <View style={styles.startRow}>
                   <Chip label="Start mock test" selected onPress={() => start('mock')} />
