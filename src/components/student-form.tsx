@@ -230,7 +230,6 @@ export function StudentForm({ existing }: { existing?: Student }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
   },
   flex: {
     flex: 1,
