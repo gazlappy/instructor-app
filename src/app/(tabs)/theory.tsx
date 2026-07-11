@@ -15,6 +15,7 @@ import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/quer
 import { type TheoryMode } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmDestructive } from '@/lib/alert';
 import { formatDateUK } from '@/lib/dates';
 
 const PASS_MARK = 0.86; // the real test needs 43/50
@@ -200,6 +201,18 @@ export default function TheoryScreen() {
     }
   };
 
+  const quit = () => {
+    const leave = () => {
+      finishedRef.current = true; // stop a racing mock timer from saving an attempt
+      setPhase('start');
+    };
+    if (mode === 'mock') {
+      confirmDestructive('Quit the mock test?', 'This attempt will not be saved.', 'Quit', leave);
+    } else {
+      leave();
+    }
+  };
+
   const question = quiz[index];
   const percent = quiz.length ? Math.round((score / quiz.length) * 100) : 0;
   const passed = quiz.length > 0 && score / quiz.length >= PASS_MARK;
@@ -333,17 +346,20 @@ export default function TheoryScreen() {
                 <ThemedText type="smallBold" themeColor="textSecondary">
                   {MODE_TITLES[mode]} · {index + 1} of {quiz.length}
                 </ThemedText>
-                {mode === 'mock' ? (
-                  <ThemedText
-                    type="smallBold"
-                    style={{ color: remaining < 60 ? theme.danger : theme.textSecondary }}>
-                    ⏱ {formatClock(remaining)}
-                  </ThemedText>
-                ) : (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {question.category}
-                  </ThemedText>
-                )}
+                <View style={styles.progressRight}>
+                  {mode === 'mock' ? (
+                    <ThemedText
+                      type="smallBold"
+                      style={{ color: remaining < 60 ? theme.danger : theme.textSecondary }}>
+                      ⏱ {formatClock(remaining)}
+                    </ThemedText>
+                  ) : (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {question.category}
+                    </ThemedText>
+                  )}
+                  <Chip label="Quit" onPress={quit} />
+                </View>
               </View>
               <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
                 <View
@@ -561,6 +577,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  progressRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   progressTrack: {
     height: 6,
