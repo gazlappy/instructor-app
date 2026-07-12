@@ -1,19 +1,38 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+const CAR_WIDTH = 20;
+
 /**
- * Progress drawn as a journey: a road with a dashed centre line, a car at
- * `percent` of the way along, and the test flag waiting at the end.
+ * Progress drawn as a journey: a road with a dashed centre line, a car that
+ * drives to `percent` of the way along, and the test flag waiting at the end.
  */
 export function RoadProgress({ percent }: { percent: number }) {
   const theme = useTheme();
   const clamped = Math.max(0, Math.min(100, percent));
+  const [roadWidth, setRoadWidth] = useState(0);
+  const [position] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.timing(position, {
+      toValue: clamped,
+      duration: 650,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [clamped, position]);
+
+  const translateX = position.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, Math.max(0, roadWidth - CAR_WIDTH)],
+  });
 
   return (
     <View style={styles.row}>
-      <View style={styles.roadArea}>
+      <View style={styles.roadArea} onLayout={(e) => setRoadWidth(e.nativeEvent.layout.width)}>
         <View style={[styles.road, { backgroundColor: theme.roadLine }]}>
           <View style={styles.dashRow} pointerEvents="none">
             {Array.from({ length: 16 }, (_, i) => (
@@ -21,9 +40,9 @@ export function RoadProgress({ percent }: { percent: number }) {
             ))}
           </View>
         </View>
-        <View style={[styles.car, { left: `${Math.min(clamped, 94)}%` }]} pointerEvents="none">
+        <Animated.View style={[styles.car, { transform: [{ translateX }] }]} pointerEvents="none">
           <Text style={styles.carGlyph}>🚗</Text>
-        </View>
+        </Animated.View>
       </View>
       <Text style={styles.flag}>🏁</Text>
     </View>
@@ -59,8 +78,10 @@ const styles = StyleSheet.create({
   },
   car: {
     position: 'absolute',
-    top: -1,
-    marginLeft: -6,
+    left: 0,
+    top: 2,
+    width: CAR_WIDTH,
+    alignItems: 'center',
   },
   carGlyph: {
     fontSize: 17,

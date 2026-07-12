@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { LevelDots } from '@/components/ui/level-dots';
+import { PassedStamp } from '@/components/ui/passed-stamp';
 import { RoadProgress } from '@/components/ui/road-progress';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import {
@@ -142,6 +143,7 @@ export default function StudentDetailScreen() {
               {STUDENT_STATUS_LABELS[student.status]} · {student.instructorName}
             </ThemedText>
           </View>
+          {student.status === 'passed' && <PassedStamp />}
           <Chip
             label="Edit"
             onPress={() => router.push({ pathname: '/student/[id]/edit', params: { id: String(studentId) } })}
