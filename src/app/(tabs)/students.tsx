@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fab } from '@/components/ui/fab';
 import { FormInput } from '@/components/ui/form';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { listStudents } from '@/db/queries';
 import { STUDENT_STATUS_LABELS, type StudentListItem } from '@/db/types';
 import { useQuery } from '@/db/use-query';
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   title: {
-    paddingTop: Spacing.three + TopTabInset,
+    paddingTop: Spacing.three,
   },
   list: {
     gap: Spacing.two,

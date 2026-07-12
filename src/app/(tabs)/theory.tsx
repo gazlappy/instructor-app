@@ -9,7 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { Field } from '@/components/ui/form';
 import { Select } from '@/components/ui/select';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { THEORY_QUESTIONS, type TheoryQuestion } from '@/data/theory-questions';
 import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/queries';
 import { type TheoryMode } from '@/db/types';
@@ -395,7 +395,10 @@ export default function TheoryScreen() {
                     disabled={mode !== 'mock' && picked !== null}
                     style={({ pressed }) => [
                       styles.option,
-                      { backgroundColor: background },
+                      {
+                        backgroundColor: background,
+                        borderColor: highlighted ? theme.tintBorder : theme.backgroundSelected,
+                      },
                       pressed && styles.pressed,
                     ]}>
                     <ThemedText type="small" style={highlighted ? { color: '#fff' } : undefined}>
@@ -532,7 +535,7 @@ const styles = StyleSheet.create({
     paddingBottom: BottomTabInset + Spacing.six,
   },
   title: {
-    paddingTop: Spacing.three + TopTabInset,
+    paddingTop: Spacing.three,
   },
   flex: {
     flex: 1,
@@ -596,8 +599,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   option: {
-    borderRadius: Spacing.three,
+    borderRadius: 12,
+    borderWidth: 1.5,
     padding: Spacing.three,
+    elevation: 1,
+    shadowColor: '#16181d',
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
   explanation: {
     borderRadius: Spacing.three,

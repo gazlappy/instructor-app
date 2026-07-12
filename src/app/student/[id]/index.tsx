@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { LevelDots } from '@/components/ui/level-dots';
+import { RoadProgress } from '@/components/ui/road-progress';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   getProgressForStudent,
@@ -38,6 +39,22 @@ function ageFromDob(dob: string): number | null {
     (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
   if (beforeBirthday) age -= 1;
   return age;
+}
+
+/** Section label with road-chevron markers. */
+function SectionTitle({ label, right }: { label: string; right?: React.ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionLabel}>
+        <ThemedText style={[styles.chevrons, { color: theme.tint }]}>››</ThemedText>
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          {label}
+        </ThemedText>
+      </View>
+      {right}
+    </View>
+  );
 }
 
 function StatTile({ value, label }: { value: string; label: string }) {
@@ -160,9 +177,7 @@ export default function StudentDetailScreen() {
 
         {licenceLines.length > 0 && (
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              LICENCE & TESTS
-            </ThemedText>
+            <SectionTitle label="LICENCE & TESTS" />
             {licenceLines.map((line) => (
               <ThemedText type="small" key={line}>
                 {line}
@@ -173,24 +188,22 @@ export default function StudentDetailScreen() {
 
         {student.notes && (
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              NOTES
-            </ThemedText>
+            <SectionTitle label="NOTES" />
             <ThemedText type="small">{student.notes}</ThemedText>
           </ThemedView>
         )}
 
-        <View style={styles.sectionHeader}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            UPCOMING LESSONS
-          </ThemedText>
-          <Chip
-            label="Book lesson"
-            onPress={() =>
-              router.push({ pathname: '/lesson/new', params: { studentId: String(studentId) } })
-            }
-          />
-        </View>
+        <SectionTitle
+          label="UPCOMING LESSONS"
+          right={
+            <Chip
+              label="Book lesson"
+              onPress={() =>
+                router.push({ pathname: '/lesson/new', params: { studentId: String(studentId) } })
+              }
+            />
+          }
+        />
         {(upcoming ?? []).length === 0 ? (
           <ThemedText type="small" themeColor="textSecondary">
             Nothing booked.
@@ -208,17 +221,15 @@ export default function StudentDetailScreen() {
           </View>
         )}
 
-        <View style={styles.sectionHeader}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            PROGRESS
-          </ThemedText>
-          <ThemedText type="smallBold" style={{ color: theme.tint }}>
-            {overallPct}%
-          </ThemedText>
-        </View>
-        <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
-          <View style={[styles.progressFill, { backgroundColor: theme.tint, width: `${overallPct}%` }]} />
-        </View>
+        <SectionTitle
+          label="ROAD TO TEST DAY"
+          right={
+            <ThemedText type="smallBold" style={{ color: theme.tint }}>
+              {overallPct}%
+            </ThemedText>
+          }
+        />
+        <RoadProgress percent={overallPct} />
         <ThemedText type="small" themeColor="textSecondary">
           Tap the dots to record a level: {SKILL_LEVELS.slice(1).join(' → ')}.
         </ThemedText>
@@ -296,6 +307,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: Spacing.two,
   },
+  sectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  chevrons: {
+    fontWeight: '900',
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -1,
+  },
   list: {
     gap: Spacing.two,
   },
@@ -308,14 +330,5 @@ const styles = StyleSheet.create({
   levelLabel: {
     fontSize: 12,
     lineHeight: 16,
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
   },
 });

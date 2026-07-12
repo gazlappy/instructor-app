@@ -8,7 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { Fab } from '@/components/ui/fab';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { listInstructors, listLessonDays, listLessonsForDay } from '@/db/queries';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useQuery } from '@/db/use-query';
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: Spacing.three + TopTabInset,
+    paddingTop: Spacing.three,
   },
   weekRow: {
     flexDirection: 'row',

@@ -11,7 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { FormInput } from '@/components/ui/form';
 import { Stepper } from '@/components/ui/stepper';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { createInstructor, listInstructors, setInstructorArchived, updateInstructor } from '@/db/queries';
 import { seedSampleStudents } from '@/db/sample-data';
 import { eraseAllData } from '@/db/schema';
@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
     paddingBottom: BottomTabInset + Spacing.six,
   },
   title: {
-    paddingTop: Spacing.three + TopTabInset,
+    paddingTop: Spacing.three,
   },
   sections: {
     gap: Spacing.three,
