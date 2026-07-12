@@ -69,7 +69,7 @@ export default function StudentsScreen() {
                 {item.status !== 'active' && (
                   <ThemedText
                     type="small"
-                    style={{ color: item.status === 'passed' ? '#30a46c' : theme.textSecondary }}>
+                    style={{ color: item.status === 'passed' ? theme.success : theme.textSecondary }}>
                     {STUDENT_STATUS_LABELS[item.status]}
                   </ThemedText>
                 )}

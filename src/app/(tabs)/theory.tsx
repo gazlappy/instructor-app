@@ -19,7 +19,7 @@ import { confirmDestructive } from '@/lib/alert';
 import { formatDateUK } from '@/lib/dates';
 
 const PASS_MARK = 0.86; // the real test needs 43/50
-const CORRECT_COLOR = '#30a46c';
+// Correct answers use the theme's primary-route green (theme.success).
 const SECONDS_PER_QUESTION = 68.4; // the real test allows 57 minutes for 50 questions
 
 interface QuizQuestion extends TheoryQuestion {
@@ -329,7 +329,7 @@ export default function TheoryScreen() {
                             {formatDateUK(attempt.takenAt.slice(0, 10))}
                           </ThemedText>
                         </View>
-                        <ThemedText type="smallBold" style={{ color: ok ? CORRECT_COLOR : theme.danger }}>
+                        <ThemedText type="smallBold" style={{ color: ok ? theme.success : theme.danger }}>
                           {attempt.score}/{attempt.total} · {pct}%
                         </ThemedText>
                       </ThemedView>
@@ -384,7 +384,7 @@ export default function TheoryScreen() {
                 const isCorrect = optionIndex === question.correctIndex;
                 const isPicked = optionIndex === picked;
                 let background: string = theme.backgroundElement;
-                if (mode !== 'mock' && picked !== null && isCorrect) background = CORRECT_COLOR;
+                if (mode !== 'mock' && picked !== null && isCorrect) background = theme.success;
                 else if (mode !== 'mock' && picked !== null && isPicked && !isCorrect)
                   background = theme.danger;
                 const highlighted = mode !== 'mock' && picked !== null && (isCorrect || isPicked);
@@ -410,7 +410,7 @@ export default function TheoryScreen() {
                   <ThemedView type="backgroundElement" style={styles.explanation}>
                     <ThemedText
                       type="smallBold"
-                      style={{ color: picked === question.correctIndex ? CORRECT_COLOR : theme.danger }}>
+                      style={{ color: picked === question.correctIndex ? theme.success : theme.danger }}>
                       {picked === question.correctIndex ? 'Correct!' : 'Not quite.'}
                     </ThemedText>
                     <ThemedText type="small">{question.explanation}</ThemedText>
@@ -460,7 +460,7 @@ export default function TheoryScreen() {
                   {MODE_TITLES[mode]}
                   {mode === 'topic' ? ` — ${topic}` : ''}
                 </ThemedText>
-                <ThemedText type="title" style={{ color: passed ? CORRECT_COLOR : theme.danger }}>
+                <ThemedText type="title" style={{ color: passed ? theme.success : theme.danger }}>
                   {percent}%
                 </ThemedText>
                 <ThemedText>
@@ -498,7 +498,7 @@ export default function TheoryScreen() {
                           ✗ Not answered (time ran out)
                         </ThemedText>
                       )}
-                      <ThemedText type="small" style={{ color: CORRECT_COLOR }}>
+                      <ThemedText type="small" style={{ color: theme.success }}>
                         ✓ {q.shuffledOptions[q.correctIndex]}
                       </ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">

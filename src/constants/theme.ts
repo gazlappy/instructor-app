@@ -7,26 +7,39 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/**
+ * "Signpost" design system: the language of the British road.
+ * Asphalt grounds, white sign-plate cards, motorway blue, and
+ * primary-route green for driving tests.
+ */
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    tint: '#3c87f7',
-    onTint: '#ffffff',
-    danger: '#e5484d',
+    text: '#16181D',
+    background: '#EFF1F3', // light asphalt
+    backgroundElement: '#FFFFFF', // sign plates
+    backgroundSelected: '#E1E5EA',
+    textSecondary: '#5A616D',
+    tint: '#0057B8', // motorway blue
+    tintBorder: '#CFE3FF', // pale sign border
+    onTint: '#FFFFFF',
+    success: '#00703C', // primary-route green
+    danger: '#C1121C', // sign red
+    roadLine: '#D5D9DE',
+    roadDash: '#FFFFFF',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    tint: '#3c87f7',
-    onTint: '#ffffff',
-    danger: '#e5484d',
+    text: '#ECEFF2',
+    background: '#121417', // night tarmac
+    backgroundElement: '#1C1F24',
+    backgroundSelected: '#2A2E35',
+    textSecondary: '#9AA1AC',
+    tint: '#4D9FFF',
+    tintBorder: '#1E3A5F',
+    onTint: '#FFFFFF',
+    success: '#2FA36B',
+    danger: '#E5484D',
+    roadLine: '#272B31',
+    roadDash: '#5A616D',
   },
 } as const;
 

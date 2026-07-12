@@ -7,7 +7,11 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatMinutes } from '@/lib/dates';
 
 const PX_PER_MIN = 1.1;
-const LABEL_WIDTH = 52;
+const LABEL_WIDTH = 44;
+const ROAD_WIDTH = 8;
+const DASH_HEIGHT = 12;
+const DASH_GAP = 12;
+const LANE_LEFT = LABEL_WIDTH + Spacing.two + ROAD_WIDTH + Spacing.three;
 
 interface PlacedLesson {
   lesson: LessonListItem;
@@ -40,7 +44,7 @@ function layoutLessons(lessons: LessonListItem[]): PlacedLesson[] {
     clusterEnd = -1;
   };
 
-  for (const lesson of sorted) {
+  for (const lesson of lessons.length ? sorted : []) {
     if (cluster.length && lesson.startMinutes >= clusterEnd) flush();
     cluster.push(lesson);
     clusterEnd = Math.max(clusterEnd, lesson.startMinutes + lesson.durationMinutes);
@@ -86,10 +90,26 @@ export function DayTimeline({
   const slots: number[] = [];
   for (let m = gridStart; m < gridEnd; m += slotIntervalMinutes) slots.push(m);
 
+  const dashes = Math.ceil(gridHeight / (DASH_HEIGHT + DASH_GAP));
   const placed = layoutLessons(lessons);
 
   return (
     <View style={[styles.grid, { height: gridHeight + Spacing.four }]}>
+      {/* the road: a grey lane with a dashed centre line */}
+      <View
+        style={[styles.road, { backgroundColor: theme.roadLine, height: gridHeight }]}
+        pointerEvents="none">
+        {Array.from({ length: dashes }, (_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dash,
+              { backgroundColor: theme.roadDash, top: i * (DASH_HEIGHT + DASH_GAP) + 4 },
+            ]}
+          />
+        ))}
+      </View>
+
       {hours.map((m) => (
         <View key={m} style={[styles.hourRow, { top: y(m) }]} pointerEvents="none">
           <ThemedText type="small" themeColor="textSecondary" style={styles.hourLabel}>
@@ -115,33 +135,55 @@ export function DayTimeline({
 
         {placed.map(({ lesson, col, cols }) => {
           const inactive = lesson.status === 'cancelled' || lesson.status === 'no_show';
+          const isTest = lesson.type === 'driving_test';
           const widthPct = 100 / cols;
+          const blockHeight = Math.max(lesson.durationMinutes * PX_PER_MIN - 3, 26);
+          const compact = blockHeight < 52;
           return (
             <Pressable
               key={lesson.id}
               onPress={() => onPressLesson(lesson)}
               style={({ pressed }) => [
-                styles.block,
+                styles.plate,
                 {
                   top: y(lesson.startMinutes),
-                  height: Math.max(lesson.durationMinutes * PX_PER_MIN - 2, 22),
+                  height: blockHeight,
                   left: `${col * widthPct}%`,
                   width: `${widthPct}%`,
                   backgroundColor: theme.backgroundElement,
-                  borderLeftColor: lesson.instructorColor,
                 },
                 inactive && styles.inactive,
                 pressed && styles.pressed,
               ]}>
-              <ThemedText type="smallBold" numberOfLines={1} style={styles.blockTitle}>
-                {lesson.studentFirstName} {lesson.studentLastName}
-              </ThemedText>
-              {lesson.durationMinutes * PX_PER_MIN >= 48 && (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.blockMeta}>
-                  {formatMinutes(lesson.startMinutes, use12HourTime)} ·{' '}
-                  {LESSON_TYPE_LABELS[lesson.type]}
+              <View
+                style={[
+                  styles.badge,
+                  {
+                    backgroundColor: isTest ? theme.success : theme.tint,
+                    borderColor: theme.tintBorder,
+                  },
+                ]}>
+                <ThemedText style={[styles.badgeText, { color: theme.onTint }]}>
+                  {formatMinutes(lesson.startMinutes, use12HourTime)}
                 </ThemedText>
-              )}
+              </View>
+              <View style={styles.plateBody}>
+                <ThemedText type="smallBold" numberOfLines={1} style={styles.plateTitle}>
+                  {lesson.studentFirstName} {lesson.studentLastName}
+                </ThemedText>
+                {!compact && (
+                  <View style={styles.metaRow}>
+                    <View style={[styles.instructorDot, { backgroundColor: lesson.instructorColor }]} />
+                    <ThemedText
+                      type="small"
+                      themeColor={isTest ? 'success' : 'textSecondary'}
+                      numberOfLines={1}
+                      style={styles.plateMeta}>
+                      {LESSON_TYPE_LABELS[lesson.type]} · {lesson.durationMinutes} min
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
             </Pressable>
           );
         })}
@@ -161,20 +203,37 @@ const styles = StyleSheet.create({
   grid: {
     position: 'relative',
   },
+  road: {
+    position: 'absolute',
+    left: LABEL_WIDTH + Spacing.two,
+    top: 0,
+    width: ROAD_WIDTH,
+    borderRadius: ROAD_WIDTH / 2,
+    overflow: 'hidden',
+  },
+  dash: {
+    position: 'absolute',
+    left: ROAD_WIDTH / 2 - 1,
+    width: 2,
+    height: DASH_HEIGHT,
+    borderRadius: 1,
+  },
   hourRow: {
     position: 'absolute',
     left: 0,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.two + ROAD_WIDTH + Spacing.three,
   },
   hourLabel: {
     width: LABEL_WIDTH,
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 14,
+    fontWeight: '700',
     textAlign: 'right',
     transform: [{ translateY: -7 }],
+    fontVariant: ['tabular-nums'],
   },
   hourLine: {
     flex: 1,
@@ -182,7 +241,7 @@ const styles = StyleSheet.create({
   },
   lane: {
     position: 'absolute',
-    left: LABEL_WIDTH + Spacing.two,
+    left: LANE_LEFT,
     right: 0,
     top: 0,
     bottom: 0,
@@ -193,22 +252,54 @@ const styles = StyleSheet.create({
     right: 0,
     borderRadius: Spacing.one,
   },
-  block: {
+  plate: {
     position: 'absolute',
-    borderRadius: Spacing.two,
-    borderLeftWidth: 4,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
     overflow: 'hidden',
-    elevation: 1,
+    elevation: 2,
+    shadowColor: '#16181d',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
-  blockTitle: {
+  badge: {
+    borderRadius: 7,
+    borderWidth: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  plateBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  plateTitle: {
     fontSize: 13,
     lineHeight: 17,
   },
-  blockMeta: {
-    fontSize: 12,
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  instructorDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  plateMeta: {
+    fontSize: 11.5,
     lineHeight: 15,
+    flexShrink: 1,
   },
   inactive: {
     opacity: 0.45,
@@ -218,7 +309,7 @@ const styles = StyleSheet.create({
   },
   nowLine: {
     position: 'absolute',
-    left: LABEL_WIDTH,
+    left: LABEL_WIDTH + Spacing.two,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',

@@ -20,7 +20,10 @@ export function Chip({ label, selected, onPress, dotColor }: ChipProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,
-        { backgroundColor: selected ? theme.tint : theme.backgroundElement },
+        {
+          backgroundColor: selected ? theme.tint : theme.backgroundElement,
+          borderColor: selected ? theme.tintBorder : theme.backgroundSelected,
+        },
         pressed && styles.pressed,
       ]}>
       {dotColor ? <ThemedText style={{ color: dotColor, fontSize: 10 }}>●</ThemedText> : null}
@@ -39,6 +42,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: 999,
+    borderWidth: 1.5,
   },
   pressed: {
     opacity: 0.7,

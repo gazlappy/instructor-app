@@ -57,7 +57,7 @@ export default function ScheduleScreen() {
         <View style={styles.header}>
           <View>
             {!!settings.schoolName && (
-              <ThemedText type="smallBold" themeColor="textSecondary">
+              <ThemedText type="eyebrow" themeColor="tint">
                 {settings.schoolName}
               </ThemedText>
             )}
@@ -79,7 +79,13 @@ export default function ScheduleScreen() {
               <Pressable
                 key={day}
                 onPress={() => setSelectedDay(day)}
-                style={[styles.dayCell, { backgroundColor: selected ? theme.tint : 'transparent' }]}>
+                style={[
+                  styles.dayCell,
+                  {
+                    backgroundColor: selected ? theme.tint : theme.backgroundElement,
+                    borderColor: selected ? theme.tintBorder : theme.backgroundSelected,
+                  },
+                ]}>
                 <ThemedText
                   type="small"
                   style={{ color: selected ? theme.onTint : theme.textSecondary }}>
@@ -182,7 +188,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: 12,
+    borderWidth: 1.5,
     gap: Spacing.half,
     minWidth: 40,
   },
