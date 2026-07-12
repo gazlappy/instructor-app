@@ -104,7 +104,7 @@ export default function TheoryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
 
-  const [phase, setPhase] = useState<'start' | 'quiz' | 'results' | 'browse'>('start');
+  const [phase, setPhase] = useState<'start' | 'quiz' | 'review' | 'results' | 'browse'>('start');
   const [mode, setMode] = useState<TheoryMode>('practice');
   const [length, setLength] = useState(10);
   const [topic, setTopic] = useState<string>(TOPICS[0].value);
@@ -115,6 +115,8 @@ export default function TheoryScreen() {
   const [score, setScore] = useState(0);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const answersRef = useRef<(number | null)[]>([]);
+  const [flags, setFlags] = useState<boolean[]>([]);
+  const [fromReview, setFromReview] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const finishedRef = useRef(false);
 
@@ -134,6 +136,8 @@ export default function TheoryScreen() {
     setScore(0);
     setAnswers(Array(questions.length).fill(null));
     answersRef.current = Array(questions.length).fill(null);
+    setFlags(Array(questions.length).fill(false));
+    setFromReview(false);
     finishedRef.current = false;
     if (startMode === 'mock') setRemaining(Math.round(questions.length * SECONDS_PER_QUESTION));
     setPhase('quiz');
@@ -159,7 +163,7 @@ export default function TheoryScreen() {
 
   // Mock test countdown; submits automatically when time runs out.
   useEffect(() => {
-    if (phase !== 'quiz' || mode !== 'mock') return;
+    if ((phase !== 'quiz' && phase !== 'review') || mode !== 'mock') return;
     const interval = setInterval(() => {
       setRemaining((r) => {
         if (r <= 1) {
@@ -180,8 +184,11 @@ export default function TheoryScreen() {
       next[index] = optionIndex;
       answersRef.current = next;
       setAnswers(next);
-      if (index + 1 >= quiz.length) {
-        finish(scoreFromAnswers(next));
+      if (fromReview) {
+        setFromReview(false);
+        setPhase('review');
+      } else if (index + 1 >= quiz.length) {
+        setPhase('review'); // the real test lets you review before submitting
       } else {
         setIndex((i) => i + 1);
       }
@@ -191,6 +198,22 @@ export default function TheoryScreen() {
     setPicked(optionIndex);
     if (optionIndex === quiz[index].correctIndex) setScore((s) => s + 1);
   };
+
+  const toggleFlag = () => {
+    setFlags((current) => {
+      const next = [...current];
+      next[index] = !next[index];
+      return next;
+    });
+  };
+
+  const jumpToQuestion = (questionIndex: number) => {
+    setIndex(questionIndex);
+    setFromReview(true);
+    setPhase('quiz');
+  };
+
+  const submitMock = () => finish(scoreFromAnswers(answersRef.current));
 
   const next = () => {
     if (index + 1 >= quiz.length) {
@@ -221,10 +244,10 @@ export default function TheoryScreen() {
     () =>
       mode === 'mock' && phase === 'results'
         ? quiz
-            .map((q, i) => ({ question: q, given: answers[i] }))
+            .map((q, i) => ({ question: q, given: answers[i], flagged: flags[i] }))
             .filter(({ question: q, given }) => given !== q.correctIndex)
         : [],
-    [mode, phase, quiz, answers]
+    [mode, phase, quiz, answers, flags]
   );
 
   return (
@@ -358,6 +381,9 @@ export default function TheoryScreen() {
                       {question.category}
                     </ThemedText>
                   )}
+                  {mode === 'mock' && (
+                    <Chip label={flags[index] ? '🚩 Flagged' : '🚩 Flag'} selected={flags[index]} onPress={toggleFlag} />
+                  )}
                   <Chip label="Quit" onPress={quit} />
                 </View>
               </View>
@@ -430,6 +456,71 @@ export default function TheoryScreen() {
             </>
           )}
 
+          {phase === 'review' && (
+            <>
+              <View style={styles.progressRow}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  Check your answers
+                </ThemedText>
+                <View style={styles.progressRight}>
+                  <ThemedText
+                    type="smallBold"
+                    style={{ color: remaining < 60 ? theme.danger : theme.textSecondary }}>
+                    ⏱ {formatClock(remaining)}
+                  </ThemedText>
+                  <Chip label="Quit" onPress={quit} />
+                </View>
+              </View>
+
+              <ThemedView type="backgroundElement" style={styles.reviewSummary}>
+                <ThemedText type="smallBold">
+                  {answers.filter((a) => a !== null).length} of {quiz.length} answered ·{' '}
+                  {flags.filter(Boolean).length} flagged
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {flags.some(Boolean) || answers.some((a) => a === null)
+                    ? 'Tap a question to change your answer, then submit when you’re happy.'
+                    : 'Nothing flagged — submit when you’re ready.'}
+                </ThemedText>
+              </ThemedView>
+
+              {quiz
+                .map((q, i) => ({ q, i }))
+                .filter(({ i }) => flags[i] || answers[i] === null)
+                .map(({ q, i }) => (
+                  <Pressable
+                    key={q.id}
+                    onPress={() => jumpToQuestion(i)}
+                    style={({ pressed }) => [
+                      styles.reviewRow,
+                      { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected },
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText type="smallBold" style={{ color: theme.tint }}>
+                      {i + 1}
+                    </ThemedText>
+                    <View style={styles.flex}>
+                      <ThemedText type="small" numberOfLines={1}>
+                        {q.question}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {flags[i] ? '🚩 Flagged' : ''}
+                        {flags[i] && answers[i] === null ? ' · ' : ''}
+                        {answers[i] === null ? 'Not answered' : ''}
+                      </ThemedText>
+                    </View>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      ›
+                    </ThemedText>
+                  </Pressable>
+                ))}
+
+              <View style={styles.resultButtons}>
+                <Chip label="Submit test" selected onPress={submitMock} />
+              </View>
+            </>
+          )}
+
           {phase === 'browse' && (
             <>
               <View style={styles.startRow}>
@@ -485,10 +576,11 @@ export default function TheoryScreen() {
                   <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
                     REVIEW — {wrongAnswers.length} TO WORK ON
                   </ThemedText>
-                  {wrongAnswers.map(({ question: q, given }) => (
+                  {wrongAnswers.map(({ question: q, given, flagged }) => (
                     <ThemedView key={q.id} type="backgroundElement" style={styles.reviewCard}>
                       <ThemedText type="small" themeColor="textSecondary">
                         {q.category}
+                        {flagged ? ' · 🚩 flagged during the test' : ''}
                       </ThemedText>
                       <ThemedText type="smallBold">{q.question}</ThemedText>
                       {given !== null && (
@@ -628,6 +720,20 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.one,
+  },
+  reviewSummary: {
+    borderRadius: 12,
+    padding: Spacing.three,
+    gap: Spacing.half,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   pressed: {
     opacity: 0.7,
