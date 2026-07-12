@@ -4,13 +4,14 @@ import { useMemo } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { LessonCard } from '@/components/lesson-card';
+import { GlobalNavBar } from '@/components/nav-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { LevelDots } from '@/components/ui/level-dots';
 import { PassedStamp } from '@/components/ui/passed-stamp';
 import { RoadProgress } from '@/components/ui/road-progress';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   getProgressForStudent,
   getStudent,
@@ -259,6 +260,7 @@ export default function StudentDetailScreen() {
           </ThemedView>
         ))}
       </ScrollView>
+      <GlobalNavBar />
     </ThemedView>
   );
 }
@@ -276,7 +278,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    paddingBottom: Spacing.six,
+    paddingBottom: BottomTabInset + Spacing.six,
   },
   headerRow: {
     flexDirection: 'row',
