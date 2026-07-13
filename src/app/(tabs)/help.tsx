@@ -8,12 +8,16 @@ import { ThemedView } from '@/components/themed-view';
 import { Chip } from '@/components/ui/chip';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { DRIVING_GUIDES, GUIDE_GROUPS } from '@/data/driving-guides';
+import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HelpScreen() {
   const theme = useTheme();
   const [guideId, setGuideId] = useState<string | null>(null);
   const guide = DRIVING_GUIDES.find((g) => g.id === guideId) ?? null;
+
+  // Re-tapping the Help tab returns to the guide list.
+  useTabReset('/help', () => setGuideId(null));
 
   return (
     <ThemedView style={styles.container}>

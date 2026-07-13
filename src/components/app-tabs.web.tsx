@@ -12,6 +12,8 @@ import { navBarStyles } from './nav-bar';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
+import { emitTabReset } from '@/hooks/tab-reset';
+
 export default function AppTabs() {
   return (
     <Tabs>
@@ -19,19 +21,19 @@ export default function AppTabs() {
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="index" href="/" asChild>
-            <TabButton>Schedule</TabButton>
+            <TabButton route="/">Schedule</TabButton>
           </TabTrigger>
           <TabTrigger name="students" href="/students" asChild>
-            <TabButton>Students</TabButton>
+            <TabButton route="/students">Students</TabButton>
           </TabTrigger>
           <TabTrigger name="theory" href="/theory" asChild>
-            <TabButton>Theory</TabButton>
+            <TabButton route="/theory">Theory</TabButton>
           </TabTrigger>
           <TabTrigger name="help" href="/help" asChild>
-            <TabButton>Help</TabButton>
+            <TabButton route="/help">Help</TabButton>
           </TabTrigger>
           <TabTrigger name="settings" href="/settings" asChild>
-            <TabButton>Settings</TabButton>
+            <TabButton route="/settings">Settings</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -39,9 +41,22 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+export function TabButton({
+  children,
+  isFocused,
+  route,
+  onPress,
+  ...props
+}: TabTriggerSlotProps & { route: string }) {
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && navBarStyles.pressed}>
+    <Pressable
+      {...props}
+      onPress={(event) => {
+        onPress?.(event);
+        // Re-tapping the active tab returns that screen to its landing view.
+        if (isFocused) emitTabReset(route);
+      }}
+      style={({ pressed }) => pressed && navBarStyles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
         style={navBarStyles.button}>

@@ -14,6 +14,7 @@ import { THEORY_QUESTIONS, type TheoryQuestion } from '@/data/theory-questions';
 import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/queries';
 import { type TheoryMode } from '@/db/types';
 import { useQuery } from '@/db/use-query';
+import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive } from '@/lib/alert';
 import { formatDateUK } from '@/lib/dates';
@@ -229,12 +230,19 @@ export default function TheoryScreen() {
       finishedRef.current = true; // stop a racing mock timer from saving an attempt
       setPhase('start');
     };
-    if (mode === 'mock') {
+    if (mode === 'mock' && (phase === 'quiz' || phase === 'review')) {
       confirmDestructive('Quit the mock test?', 'This attempt will not be saved.', 'Quit', leave);
     } else {
       leave();
     }
   };
+
+  // Re-tapping the Theory tab returns to the start screen. A mock in
+  // progress still gets its confirmation before being abandoned.
+  useTabReset('/theory', () => {
+    if (phase === 'start') return;
+    quit();
+  });
 
   const question = quiz[index];
   const percent = quiz.length ? Math.round((score / quiz.length) * 100) : 0;

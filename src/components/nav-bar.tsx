@@ -5,6 +5,7 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { Spacing } from '@/constants/theme';
+import { emitTabReset } from '@/hooks/tab-reset';
 
 /** The five main sections, with the paths each one "owns" for active highlighting. */
 export const NAV_ITEMS = [
@@ -68,7 +69,11 @@ export function GlobalNavBar() {
           return (
             <Pressable
               key={item.href}
-              onPress={() => router.navigate(item.href)}
+              onPress={() => {
+                router.navigate(item.href);
+                // Re-tapping the section you're in returns it to its landing view.
+                if (active) emitTabReset(item.href);
+              }}
               style={({ pressed }) => pressed && navBarStyles.pressed}>
               <ThemedView
                 type={active ? 'backgroundSelected' : 'backgroundElement'}

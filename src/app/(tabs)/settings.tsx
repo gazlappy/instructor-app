@@ -28,6 +28,7 @@ import {
 import { INSTRUCTOR_COLORS, type Instructor, type LessonType } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
+import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
 import { formatMinutes } from '@/lib/dates';
@@ -590,6 +591,10 @@ export default function SettingsScreen() {
     }),
     [openSection]
   );
+
+  // Re-tapping the Settings tab collapses everything back to the tidy list.
+  // Unsaved draft edits are kept — only the accordion resets.
+  useTabReset('/settings', () => setOpenSection(null));
 
   return (
     <ThemedView style={styles.container}>

@@ -12,6 +12,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { listInstructors, listLessonDays, listLessonsForDay } from '@/db/queries';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useQuery } from '@/db/use-query';
+import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, dayOfMonth, monthTitle, startOfWeek, todayKey, weekdayShort, type DateKey } from '@/lib/dates';
 
@@ -50,6 +51,13 @@ export default function ScheduleScreen() {
     timelineRef.current?.scrollTo({ y: target, animated: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, visibleLessons.length]);
+
+  // Re-tapping the Schedule tab jumps back to today with no filter.
+  useTabReset('/', () => {
+    setSelectedDay(todayKey());
+    setInstructorFilter(null);
+    timelineRef.current?.scrollTo({ y: 0, animated: true });
+  });
 
   return (
     <ThemedView style={styles.container}>

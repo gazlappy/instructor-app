@@ -12,6 +12,7 @@ import { listStudents } from '@/db/queries';
 import { STUDENT_STATUS_LABELS, type StudentListItem } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
+import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateUK, todayKey } from '@/lib/dates';
 
@@ -34,6 +35,9 @@ export default function StudentsScreen() {
       }),
     [search, settings.showPassedStudents, settings.studentSort]
   );
+
+  // Re-tapping the Students tab clears the search.
+  useTabReset('/students', () => setSearch(''));
 
   return (
     <ThemedView style={styles.container}>
