@@ -3,13 +3,14 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
+import { GlobalNavBar } from '@/components/nav-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AddressInput } from '@/components/ui/address-input';
 import { Chip } from '@/components/ui/chip';
 import { DateInput } from '@/components/ui/date-input';
 import { ChipSelect, Field, FormInput } from '@/components/ui/form';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { createStudent, deleteStudent, listInstructors, updateStudent } from '@/db/queries';
 import {
   STUDENT_STATUS_LABELS,
@@ -223,6 +224,7 @@ export function StudentForm({ existing }: { existing?: Student }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <GlobalNavBar />
     </ThemedView>
   );
 }
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     paddingTop: Spacing.two,
-    paddingBottom: Spacing.six,
+    paddingBottom: BottomTabInset + Spacing.six,
   },
   spacer: {
     flex: 1,
