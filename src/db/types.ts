@@ -43,7 +43,7 @@ export const TRANSMISSION_LABELS: Record<Transmission, string> = {
   automatic: 'Automatic',
 };
 
-export type TheoryMode = 'practice' | 'topic' | 'mock' | 'signs';
+export type TheoryMode = 'practice' | 'topic' | 'mock' | 'signs' | 'safety';
 
 export interface TheoryAttempt {
   id: number;
