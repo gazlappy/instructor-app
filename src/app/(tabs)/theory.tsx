@@ -10,6 +10,7 @@ import { Chip } from '@/components/ui/chip';
 import { Field } from '@/components/ui/form';
 import { Select } from '@/components/ui/select';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { SAFETY_QUESTIONS } from '@/data/safety-questions';
 import { THEORY_QUESTIONS, type TheoryQuestion } from '@/data/theory-questions';
 import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/queries';
 import { type TheoryMode } from '@/db/types';
@@ -57,12 +58,6 @@ const TOPICS = [...new Set(THEORY_QUESTIONS.map((q) => q.category))].map((catego
   label: `${category} (${THEORY_QUESTIONS.filter((q) => q.category === category).length})`,
 }));
 
-const LENGTH_OPTIONS = [
-  { value: 10, label: 'Quick — 10 questions' },
-  { value: 25, label: 'Standard — 25 questions' },
-  { value: 50, label: 'Long — 50 questions' },
-];
-
 /** The real test is 50 questions in 57 minutes. */
 const MOCK_LENGTH = Math.min(50, THEORY_QUESTIONS.length);
 const MOCK_SECONDS = Math.round(MOCK_LENGTH * SECONDS_PER_QUESTION);
@@ -72,6 +67,7 @@ const MODE_TITLES: Record<TheoryMode, string> = {
   topic: 'Topic practice',
   mock: 'Mock test',
   signs: 'Sign quiz',
+  safety: 'Safety questions',
 };
 
 function buildSignQuiz(): QuizQuestion[] {
@@ -101,11 +97,43 @@ function formatClock(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** A Help-style tappable row: emoji, title, summary, chevron. */
+function ModeRow({
+  emoji,
+  title,
+  summary,
+  onPress,
+}: {
+  emoji: string;
+  title: string;
+  summary: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+      <ThemedView type="backgroundElement" style={styles.modeRow}>
+        <ThemedText style={styles.modeEmoji}>{emoji}</ThemedText>
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">{title}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {summary}
+          </ThemedText>
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          ›
+        </ThemedText>
+      </ThemedView>
+    </Pressable>
+  );
+}
+
 export default function TheoryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
 
-  const [phase, setPhase] = useState<'start' | 'quiz' | 'review' | 'results' | 'browse'>('start');
+  const [phase, setPhase] = useState<'start' | 'topics' | 'quiz' | 'review' | 'results' | 'browse'>(
+    'start'
+  );
   const [mode, setMode] = useState<TheoryMode>('practice');
   const [length, setLength] = useState(10);
   const [topic, setTopic] = useState<string>(TOPICS[0].value);
@@ -124,11 +152,22 @@ export default function TheoryScreen() {
   const { data: students } = useQuery((db) => listStudents(db, { includePassed: false }));
   const { data: attempts, refresh: refreshAttempts } = useQuery((db) => listTheoryAttempts(db));
 
-  const start = (startMode: TheoryMode) => {
+  const start = (startMode: TheoryMode, opts: { length?: number; topic?: string } = {}) => {
+    const chosenTopic = opts.topic ?? topic;
+    if (opts.topic) setTopic(opts.topic);
+    if (opts.length) setLength(opts.length);
     const pool =
-      startMode === 'topic' ? THEORY_QUESTIONS.filter((q) => q.category === topic) : THEORY_QUESTIONS;
+      startMode === 'topic'
+        ? THEORY_QUESTIONS.filter((q) => q.category === chosenTopic)
+        : startMode === 'safety'
+          ? SAFETY_QUESTIONS
+          : THEORY_QUESTIONS;
     const quizLength =
-      startMode === 'practice' ? length : startMode === 'mock' ? MOCK_LENGTH : pool.length;
+      startMode === 'practice'
+        ? (opts.length ?? length)
+        : startMode === 'mock'
+          ? MOCK_LENGTH
+          : pool.length;
     const questions = startMode === 'signs' ? buildSignQuiz() : buildQuiz(pool, quizLength);
     setMode(startMode);
     setQuiz(questions);
@@ -284,58 +323,62 @@ export default function TheoryScreen() {
               </Field>
 
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
-                QUICK PRACTICE
+                PRACTISE
               </ThemedText>
-              <ThemedView type="backgroundElement" style={styles.modeCard}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Random questions with instant feedback and explanations.
-                </ThemedText>
-                <Select options={LENGTH_OPTIONS} value={length} onChange={setLength} />
-                <View style={styles.startRow}>
-                  <Chip label="Start practice" selected onPress={() => start('practice')} />
-                </View>
-              </ThemedView>
-
-              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
-                PICK A TOPIC
-              </ThemedText>
-              <ThemedView type="backgroundElement" style={styles.modeCard}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Drill one category at a time — every question in the topic, instant feedback.
-                </ThemedText>
-                <Select options={TOPICS} value={topic} onChange={setTopic} />
-                <View style={styles.startRow}>
-                  <Chip label="Practise this topic" selected onPress={() => start('topic')} />
-                </View>
-              </ThemedView>
+              <ModeRow
+                emoji="⚡"
+                title="Quick practice"
+                summary="10 random questions with instant feedback and explanations."
+                onPress={() => start('practice', { length: 10 })}
+              />
+              <ModeRow
+                emoji="📚"
+                title="Long practice"
+                summary="25 random questions — a proper session with instant feedback."
+                onPress={() => start('practice', { length: 25 })}
+              />
+              <ModeRow
+                emoji="📖"
+                title="Pick a topic"
+                summary="Drill one category at a time — every question in the topic."
+                onPress={() => setPhase('topics')}
+              />
 
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
                 ROAD SIGNS
               </ThemedText>
-              <ThemedView type="backgroundElement" style={styles.modeCard}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Learn the shapes and meanings — {ROAD_SIGNS.length} signs to recognise, or browse
-                  them all as a reference.
-                </ThemedText>
-                <View style={styles.signButtonRow}>
-                  <Chip label="Sign quiz" selected onPress={() => start('signs')} />
-                  <Chip label="Browse signs" onPress={() => setPhase('browse')} />
-                </View>
-              </ThemedView>
+              <ModeRow
+                emoji="🚦"
+                title="Sign quiz"
+                summary={`All ${ROAD_SIGNS.length} signs — what does each one mean?`}
+                onPress={() => start('signs')}
+              />
+              <ModeRow
+                emoji="🔍"
+                title="Browse all signs"
+                summary="The full reference, grouped by shape and meaning."
+                onPress={() => setPhase('browse')}
+              />
+
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                VEHICLE SAFETY
+              </ThemedText>
+              <ModeRow
+                emoji="🔧"
+                title="Show me, tell me quiz"
+                summary={`The ${SAFETY_QUESTIONS.length} vehicle-safety checks from the start of the practical test.`}
+                onPress={() => start('safety')}
+              />
 
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
                 MOCK TEST
               </ThemedText>
-              <ThemedView type="backgroundElement" style={styles.modeCard}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Under test conditions, like the real thing: {MOCK_LENGTH} questions,{' '}
-                  {formatClock(MOCK_SECONDS)} on the clock, no feedback until the end. 86% to
-                  pass, then review what you got wrong.
-                </ThemedText>
-                <View style={styles.startRow}>
-                  <Chip label="Start mock test" selected onPress={() => start('mock')} />
-                </View>
-              </ThemedView>
+              <ModeRow
+                emoji="⏱"
+                title="Mock test"
+                summary={`Test conditions: ${MOCK_LENGTH} questions, ${formatClock(MOCK_SECONDS)} on the clock, review at the end. 86% to pass.`}
+                onPress={() => start('mock')}
+              />
 
               {(attempts ?? []).length > 0 && (
                 <>
@@ -461,6 +504,26 @@ export default function TheoryScreen() {
                   </View>
                 </>
               )}
+            </>
+          )}
+
+          {phase === 'topics' && (
+            <>
+              <View style={styles.startRow}>
+                <Chip label="‹ Back" onPress={() => setPhase('start')} />
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                Every question in the chosen category, with instant feedback.
+              </ThemedText>
+              {TOPICS.map((t) => (
+                <ModeRow
+                  key={t.value}
+                  emoji="📖"
+                  title={t.value}
+                  summary={`${THEORY_QUESTIONS.filter((q) => q.category === t.value).length} questions`}
+                  onPress={() => start('topic', { topic: t.value })}
+                />
+              ))}
             </>
           )}
 
@@ -643,17 +706,18 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingTop: Spacing.two,
   },
-  modeCard: {
-    borderRadius: Spacing.three,
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: 12,
     padding: Spacing.three,
-    gap: Spacing.two,
+  },
+  modeEmoji: {
+    fontSize: 22,
   },
   startRow: {
     flexDirection: 'row',
-  },
-  signButtonRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
   },
   signGraphic: {
     alignItems: 'center',
