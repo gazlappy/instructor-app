@@ -17,7 +17,7 @@ export interface DrivingGuide {
   group: GuideGroup;
   summary: string;
   intro: string;
-  diagram?: 'mirrors' | 'parallel' | 'bay' | 'roundabout' | 'pullUpRight';
+  diagram?: 'mirrors' | 'parallel' | 'bay' | 'roundabout' | 'pullUpRight' | 'emergencyStop' | 'hillStart';
   sections: GuideSection[];
 }
 
@@ -109,6 +109,7 @@ export const DRIVING_GUIDES: DrivingGuide[] = [
     summary: 'Stopping promptly under full control — and what to do straight after.',
     intro:
       'Around one test in three includes it. The examiner will pull you over first, explain the signal, and give you a clear stretch of road — so the skill being marked is control, not surprise.',
+    diagram: 'emergencyStop',
     sections: [
       {
         heading: 'The stop itself',
@@ -144,6 +145,7 @@ export const DRIVING_GUIDES: DrivingGuide[] = [
     summary: 'Finding the bite, moving off uphill without rolling, and downhill starts.',
     intro:
       'Clutch control is confidence in disguise. Once a pupil can hold the car on the bite, hills, queues, and tight manoeuvres all get easier at once.',
+    diagram: 'hillStart',
     sections: [
       {
         heading: 'Finding the biting point',
