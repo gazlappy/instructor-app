@@ -129,9 +129,12 @@ function AnimatedCar({
   brake?: LightRanges;
   reverse?: LightRanges;
 }) {
-  const w = 26 * scale;
+  // Sprite canvas is 32 wide so the tyres can poke out past the 26-wide body.
+  const w = 32 * scale;
   const h = 48 * scale;
   const dot = Math.max(4, 6 * scale);
+  const bodyLeft = (3 / 32) * w;
+  const bodyRight = (29 / 32) * w;
 
   const style = useAnimatedStyle(() => {
     const p = progress.value;
@@ -149,8 +152,16 @@ function AnimatedCar({
     <Animated.View
       pointerEvents="none"
       style={[styles.car, { width: w, height: h, left: -w / 2, top: -h / 2 }, style]}>
-      <Svg width={w} height={h} viewBox="0 0 26 48">
+      <Svg width={w} height={h} viewBox="-3 0 32 48">
+        {/* tyres */}
+        <Rect x={-2.5} y={7} width={4} height={11} rx={2} fill="#1D2025" />
+        <Rect x={24.5} y={7} width={4} height={11} rx={2} fill="#1D2025" />
+        <Rect x={-2.5} y={31} width={4} height={11} rx={2} fill="#1D2025" />
+        <Rect x={24.5} y={31} width={4} height={11} rx={2} fill="#1D2025" />
+        {/* body, windows, door mirrors */}
         <Rect x={0} y={0} width={26} height={48} rx={7} fill={color} />
+        <Rect x={-2.5} y={11} width={3.5} height={2.5} rx={1} fill={color} />
+        <Rect x={25} y={11} width={3.5} height={2.5} rx={1} fill={color} />
         <Rect x={4} y={10} width={18} height={10} rx={2} fill="#ffffff" opacity={0.35} />
         <Rect x={4} y={32} width={18} height={8} rx={2} fill="#ffffff" opacity={0.25} />
       </Svg>
@@ -163,8 +174,8 @@ function AnimatedCar({
           color={AMBER}
           dot={dot}
           positions={[
-            { left: -dot / 3, top: 0 },
-            { left: -dot / 3, top: h - dot },
+            { left: bodyLeft - dot / 3, top: 0 },
+            { left: bodyLeft - dot / 3, top: h - dot },
           ]}
         />
       )}
@@ -177,8 +188,8 @@ function AnimatedCar({
           color={AMBER}
           dot={dot}
           positions={[
-            { left: w - dot + dot / 3, top: 0 },
-            { left: w - dot + dot / 3, top: h - dot },
+            { left: bodyRight - dot + dot / 3, top: 0 },
+            { left: bodyRight - dot + dot / 3, top: h - dot },
           ]}
         />
       )}
@@ -191,8 +202,8 @@ function AnimatedCar({
           color="#E5484D"
           dot={dot}
           positions={[
-            { left: dot / 2, top: h - dot / 2 },
-            { left: w - dot * 1.5, top: h - dot / 2 },
+            { left: bodyLeft + dot / 2, top: h - dot / 2 },
+            { left: bodyRight - dot * 1.5, top: h - dot / 2 },
           ]}
         />
       )}
@@ -205,8 +216,8 @@ function AnimatedCar({
           color="#ffffff"
           dot={dot}
           positions={[
-            { left: dot / 2, top: h - dot / 2 },
-            { left: w - dot * 1.5, top: h - dot / 2 },
+            { left: bodyLeft + dot / 2, top: h - dot / 2 },
+            { left: bodyRight - dot * 1.5, top: h - dot / 2 },
           ]}
         />
       )}
@@ -254,8 +265,118 @@ function FadeBadge({
 }
 
 /** Positions the static SVG and its animated overlays in one box. */
-function DiagramShell({ size, children }: { size: number; children: React.ReactNode }) {
-  return <View style={{ width: size, height: (size * VIEW_H) / VIEW_W }}>{children}</View>;
+function DiagramShell({
+  size,
+  viewH = VIEW_H,
+  children,
+}: {
+  size: number;
+  viewH?: number;
+  children: React.ReactNode;
+}) {
+  return <View style={{ width: size, height: (size * viewH) / VIEW_W }}>{children}</View>;
+}
+
+/** A zone polygon that lights up while the loop is inside `range`. */
+function ZoneHighlight({
+  progress,
+  range,
+  size,
+  viewH = VIEW_H,
+  children,
+}: {
+  progress: SharedValue<number>;
+  range: readonly [number, number];
+  size: number;
+  viewH?: number;
+  children: React.ReactNode;
+}) {
+  const style = useAnimatedStyle(() => {
+    const [a, b] = range;
+    return {
+      opacity: interpolate(
+        progress.value,
+        [a, Math.min(a + 0.04, b), Math.max(b - 0.04, a), b],
+        [0, 1, 1, 0],
+        Extrapolation.CLAMP
+      ),
+    };
+  });
+
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+      <Svg width={size} height={(size * viewH) / VIEW_W} viewBox={`0 0 ${VIEW_W} ${viewH}`}>
+        {children}
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** One entry of the rotating caption strip under a diagram. */
+function PhaseCaption({
+  progress,
+  range,
+  label,
+  color,
+}: {
+  progress: SharedValue<number>;
+  range: readonly [number, number];
+  label: string;
+  color: string;
+}) {
+  const style = useAnimatedStyle(() => {
+    const [a, b] = range;
+    return {
+      opacity: interpolate(
+        progress.value,
+        [a, Math.min(a + 0.04, b), Math.max(b - 0.04, a), b],
+        [0, 1, 1, 0],
+        Extrapolation.CLAMP
+      ),
+    };
+  });
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.caption, style]}>
+      <View style={[styles.captionPill, { backgroundColor: color }]}>
+        <ThemedText style={styles.badgeText}>{label}</ThemedText>
+      </View>
+    </Animated.View>
+  );
+}
+
+/** The lane divider scrolling towards the viewer — your own road speed. */
+function ScrollingLaneDashes({
+  size,
+  viewH = VIEW_H,
+  x,
+  color,
+  durationMs = 800,
+}: {
+  size: number;
+  viewH?: number;
+  x: number;
+  color: string;
+  durationMs?: number;
+}) {
+  const progress = useLoopProgress(durationMs);
+  const scale = size / VIEW_W;
+  const period = 26 * scale; // one dash + one gap
+  const h = (size * viewH) / VIEW_W;
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateY: progress.value * period }],
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[{ position: 'absolute', left: 0, top: -period, width: size, height: h + period }, style]}>
+      <Svg width={size} height={h + period} viewBox={`0 -26 ${VIEW_W} ${viewH + 26}`}>
+        <Line x1={x} y1={-26} x2={x} y2={viewH} stroke={color} strokeWidth={2.5} strokeDasharray="14 12" />
+      </Svg>
+    </Animated.View>
+  );
 }
 
 function CarTopDown({
@@ -274,74 +395,106 @@ function CarTopDown({
   // A 26×48 car drawn about its centre for easy rotation.
   return (
     <G transform={`translate(${x} ${y}) rotate(${rotate})`} opacity={opacity}>
+      <Rect x={-15.5} y={-17} width={4} height={11} rx={2} fill="#1D2025" />
+      <Rect x={11.5} y={-17} width={4} height={11} rx={2} fill="#1D2025" />
+      <Rect x={-15.5} y={7} width={4} height={11} rx={2} fill="#1D2025" />
+      <Rect x={11.5} y={7} width={4} height={11} rx={2} fill="#1D2025" />
       <Rect x={-13} y={-24} width={26} height={48} rx={7} fill={color} />
+      <Rect x={-15.5} y={-13} width={3.5} height={2.5} rx={1} fill={color} />
+      <Rect x={12} y={-13} width={3.5} height={2.5} rx={1} fill={color} />
       <Rect x={-9} y={-14} width={18} height={10} rx={2} fill="#ffffff" opacity={0.35} />
       <Rect x={-9} y={8} width={18} height={8} rx={2} fill="#ffffff" opacity={0.25} />
     </G>
   );
 }
 
-// --- mirrors: an overtaker slides through the blind spot ---
+// --- mirrors: an overtaker tracked from mirror to mirror to blind spot ---
 
-const OVERTAKER_PATH: CarPath = {
-  t: [0, 1],
-  x: [166, 166],
-  y: [225, -50],
-  r: [0, 0],
+const MIRROR_VIEW_H = 200;
+const MIRROR_MS = 9000;
+
+// The overtaker runs up the right-hand lane at a steady closing speed.
+const MIRROR_PATH: CarPath = {
+  t: [0, 0.04, 0.9, 1],
+  x: [152, 152, 152, 152],
+  y: [236, 236, -50, -50],
+  r: [0, 0, 0, 0],
 };
-const OVERTAKER_MS = 6000;
+const MIRROR_FADE: FadeTrack = { t: [0, 0.06, 0.86, 0.92, 1], v: [0, 1, 1, 0, 0] };
+
+// Zone shapes, anchored to your car at (88,92). The phase windows below are
+// derived from where the overtaker's position actually crosses each shape.
+const ZONE_INTERIOR = '88,118 44,200 168,200';
+const ZONE_DOOR_RIGHT = '104,76 200,158 136,200';
+const ZONE_BLIND_RIGHT = '102,84 200,64 188,136';
+const ZONE_DOOR_LEFT = '72,76 -24,158 40,200';
+const ZONE_BLIND_LEFT = '74,84 -24,64 -12,136';
+const ZONE_WINDSCREEN = '88,64 40,0 178,0';
+
+const PHASE_INTERIOR: [number, number] = [0.08, 0.2];
+const PHASE_DOOR: [number, number] = [0.19, 0.39];
+const PHASE_BLIND: [number, number] = [0.4, 0.53];
+const PHASE_AHEAD: [number, number] = [0.56, 0.86];
 
 export function MirrorZonesDiagram({ size = 260 }: { size?: number }) {
   const theme = useTheme();
   const scale = size / VIEW_W;
-  const progress = useLoopProgress(OVERTAKER_MS);
+  const progress = useLoopProgress(MIRROR_MS);
+  const svgH = (size * MIRROR_VIEW_H) / VIEW_W;
 
   return (
-    <DiagramShell size={size}>
-      <Svg width={size} height={size * 0.75} viewBox="0 0 240 180">
-        {/* direction of travel */}
-        <Line x1={120} y1={26} x2={120} y2={10} stroke={theme.textSecondary} strokeWidth={2} />
-        <Polygon points="120,4 114,14 126,14" fill={theme.textSecondary} />
+    <View style={{ width: size }}>
+      <View style={[styles.scene, { width: size, height: svgH }]}>
+        <Svg width={size} height={svgH} viewBox={`0 0 ${VIEW_W} ${MIRROR_VIEW_H}`}>
+          {/* two-lane road */}
+          <Rect x={54} y={0} width={132} height={MIRROR_VIEW_H} fill={theme.roadLine} />
+          <Line x1={54} y1={0} x2={54} y2={MIRROR_VIEW_H} stroke={theme.textSecondary} strokeWidth={3} />
+          <Line x1={186} y1={0} x2={186} y2={MIRROR_VIEW_H} stroke={theme.textSecondary} strokeWidth={3} />
 
-        {/* interior mirror view */}
-        <Polygon points="120,110 92,176 148,176" fill={theme.tint} opacity={0.18} />
-        {/* door mirror views */}
-        <Polygon points="104,72 52,150 78,164" fill={theme.tint} opacity={0.18} />
-        <Polygon points="136,72 188,150 162,164" fill={theme.tint} opacity={0.18} />
-        {/* blind spots */}
-        <Polygon points="104,76 30,96 46,140" fill={AMBER} opacity={0.3} />
-        <Polygon points="136,76 210,96 194,140" fill={AMBER} opacity={0.3} />
+          {/* what your mirrors cover, at rest */}
+          <Polygon points={ZONE_INTERIOR} fill={theme.tint} opacity={0.1} />
+          <Polygon points={ZONE_DOOR_RIGHT} fill={theme.tint} opacity={0.1} />
+          <Polygon points={ZONE_DOOR_LEFT} fill={theme.tint} opacity={0.1} />
+          <Polygon points={ZONE_BLIND_RIGHT} fill={AMBER} opacity={0.16} />
+          <Polygon points={ZONE_BLIND_LEFT} fill={AMBER} opacity={0.16} />
 
-        <CarTopDown x={120} y={84} color={theme.tint} />
+          <CarTopDown x={88} y={92} color={theme.tint} />
+        </Svg>
 
-        <SvgText x={30} y={88} fontSize={10} fontWeight="bold" fill={AMBER}>
-          blind spot
-        </SvgText>
-        <SvgText x={166} y={88} fontSize={10} fontWeight="bold" fill={AMBER}>
-          blind spot
-        </SvgText>
-        <SvgText x={120} y={172} fontSize={10} fontWeight="bold" fill={theme.tint} textAnchor="middle" opacity={0.9}>
-          mirror view
-        </SvgText>
-      </Svg>
-      <AnimatedCar
-        progress={progress}
-        durationMs={OVERTAKER_MS}
-        path={OVERTAKER_PATH}
-        scale={scale}
-        color={theme.textSecondary}
-      />
-      {/* the moment it vanishes from every mirror */}
-      <FadeBadge
-        progress={progress}
-        range={[0.36, 0.58]}
-        x={182}
-        y={54}
-        scale={scale}
-        label="in your blind spot!"
-        color={AMBER}
-      />
-    </DiagramShell>
+        <ScrollingLaneDashes size={size} viewH={MIRROR_VIEW_H} x={120} color={theme.roadDash} />
+
+        {/* each zone lights up while the overtaker is inside it */}
+        <ZoneHighlight progress={progress} range={PHASE_INTERIOR} size={size} viewH={MIRROR_VIEW_H}>
+          <Polygon points={ZONE_INTERIOR} fill={theme.tint} opacity={0.32} />
+        </ZoneHighlight>
+        <ZoneHighlight progress={progress} range={PHASE_DOOR} size={size} viewH={MIRROR_VIEW_H}>
+          <Polygon points={ZONE_DOOR_RIGHT} fill={theme.tint} opacity={0.32} />
+        </ZoneHighlight>
+        <ZoneHighlight progress={progress} range={PHASE_BLIND} size={size} viewH={MIRROR_VIEW_H}>
+          <Polygon points={ZONE_BLIND_RIGHT} fill={AMBER} opacity={0.5} />
+        </ZoneHighlight>
+        <ZoneHighlight progress={progress} range={PHASE_AHEAD} size={size} viewH={MIRROR_VIEW_H}>
+          <Polygon points={ZONE_WINDSCREEN} fill={theme.success} opacity={0.28} />
+        </ZoneHighlight>
+
+        <AnimatedCar
+          progress={progress}
+          durationMs={MIRROR_MS}
+          path={MIRROR_PATH}
+          fade={MIRROR_FADE}
+          scale={scale}
+          color={theme.textSecondary}
+        />
+      </View>
+
+      {/* running commentary, kept clear of the picture */}
+      <View style={styles.captionStrip}>
+        <PhaseCaption progress={progress} range={PHASE_INTERIOR} label="behind you — interior mirror" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PHASE_DOOR} label="closing — right door mirror" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PHASE_BLIND} label="alongside — blind spot, shoulder check!" color={AMBER} />
+        <PhaseCaption progress={progress} range={PHASE_AHEAD} label="past you — in the windscreen" color={theme.success} />
+      </View>
+    </View>
   );
 }
 
@@ -754,5 +907,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     fontWeight: '700',
+  },
+  scene: {
+    overflow: 'hidden',
+    borderRadius: 8,
+  },
+  captionStrip: {
+    height: 34,
+    marginTop: 6,
+  },
+  caption: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captionPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
 });

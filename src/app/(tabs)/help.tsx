@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GuideDiagram } from '@/components/guide-diagrams';
@@ -13,8 +13,13 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function HelpScreen() {
   const theme = useTheme();
+  const { width } = useWindowDimensions();
   const [guideId, setGuideId] = useState<string | null>(null);
   const guide = DRIVING_GUIDES.find((g) => g.id === guideId) ?? null;
+
+  // Fill the diagram card on phones, without ballooning on desktop.
+  const contentWidth = Math.min(width, MaxContentWidth) - Spacing.three * 2;
+  const diagramSize = Math.min(520, contentWidth - Spacing.three * 2);
 
   // Re-tapping the Help tab returns to the guide list.
   useTabReset('/help', () => setGuideId(null));
@@ -72,7 +77,7 @@ export default function HelpScreen() {
               </ThemedText>
               {guide.diagram && (
                 <ThemedView type="backgroundElement" style={styles.diagramCard}>
-                  <GuideDiagram kind={guide.diagram} />
+                  <GuideDiagram kind={guide.diagram} size={diagramSize} />
                 </ThemedView>
               )}
               <ThemedText type="small" themeColor="textSecondary">
