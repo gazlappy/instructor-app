@@ -12,6 +12,7 @@ import { Chip } from '@/components/ui/chip';
 import { FormInput } from '@/components/ui/form';
 import { Stepper } from '@/components/ui/stepper';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { createBackup, getSchemaVersion, restoreBackup, validateBackup } from '@/db/backup';
 import { createInstructor, listInstructors, setInstructorArchived, updateInstructor } from '@/db/queries';
 import { seedSampleStudents } from '@/db/sample-data';
 import { eraseAllData } from '@/db/schema';
@@ -31,7 +32,8 @@ import { useAppSettings } from '@/hooks/app-settings';
 import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
-import { formatMinutes } from '@/lib/dates';
+import { pickBackupFile, saveBackupFile } from '@/lib/backup-io';
+import { formatMinutes, todayKey } from '@/lib/dates';
 
 const DAY_START_OPTIONS = Array.from({ length: 17 }, (_, i) => 4 * 60 + i * 30); // 04:00–12:00
 const DAY_END_OPTIONS = Array.from({ length: 22 }, (_, i) => 13 * 60 + i * 30); // 13:00–23:30
@@ -538,6 +540,48 @@ function DataSection({ onErased }: { onErased: () => void }) {
   const db = useSQLiteContext();
   const theme = useTheme();
 
+  const exportBackup = async () => {
+    try {
+      const backup = await createBackup(db);
+      await saveBackupFile(JSON.stringify(backup), `instructor-backup-${todayKey()}.json`);
+    } catch (error) {
+      showAlert('Export failed', error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const importBackup = async () => {
+    try {
+      const text = await pickBackupFile();
+      if (text === null) return;
+      const backup = validateBackup(JSON.parse(text), await getSchemaVersion(db));
+      const counts = `${backup.tables.students?.length ?? 0} students, ${backup.tables.lessons?.length ?? 0} lessons`;
+      confirmDestructive(
+        'Restore this backup?',
+        `Everything currently on this device will be replaced with the backup from ${backup.exportedAt.slice(0, 10)} (${counts}).`,
+        'Replace everything',
+        async () => {
+          // The callback outlives the try/catch below, so handle errors here.
+          try {
+            await restoreBackup(db, backup);
+            onErased();
+            showAlert('Backup restored', counts);
+          } catch (error) {
+            showAlert('Import failed', error instanceof Error ? error.message : String(error));
+          }
+        }
+      );
+    } catch (error) {
+      showAlert(
+        'Import failed',
+        error instanceof SyntaxError
+          ? 'This file is not valid JSON.'
+          : error instanceof Error
+            ? error.message
+            : String(error)
+      );
+    }
+  };
+
   const addSamples = async () => {
     const added = await seedSampleStudents(db);
     showAlert(
@@ -560,6 +604,26 @@ function DataSection({ onErased }: { onErased: () => void }) {
 
   return (
     <SettingsSection title="DATA">
+      <Pressable onPress={exportBackup} style={({ pressed }) => pressed && styles.pressed}>
+        <ThemedView type="backgroundElement" style={styles.row}>
+          <View style={styles.rowBody}>
+            <ThemedText type="small">Export backup</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Every student, lesson and setting as a JSON file.
+            </ThemedText>
+          </View>
+        </ThemedView>
+      </Pressable>
+      <Pressable onPress={importBackup} style={({ pressed }) => pressed && styles.pressed}>
+        <ThemedView type="backgroundElement" style={styles.row}>
+          <View style={styles.rowBody}>
+            <ThemedText type="small">Import backup…</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Replaces the data on this device with a backup file.
+            </ThemedText>
+          </View>
+        </ThemedView>
+      </Pressable>
       <Pressable onPress={addSamples} style={({ pressed }) => pressed && styles.pressed}>
         <ThemedView type="backgroundElement" style={styles.row}>
           <ThemedText type="small">Add 10 sample students</ThemedText>

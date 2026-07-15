@@ -4,8 +4,13 @@ import type {
   Instructor,
   Lesson,
   LessonListItem,
+  LessonRecap,
   LessonStatus,
   LessonType,
+  MockFaultEntry,
+  MockTestResult,
+  MockTestResultVerdict,
+  RecapListItem,
   Skill,
   SkillProgressRow,
   StudentListItem,
@@ -191,14 +196,22 @@ export function getStudentStats(db: SQLiteDatabase, studentId: number, today: st
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completedLessons,
          COALESCE(SUM(CASE WHEN status = 'completed' THEN duration_minutes ELSE 0 END), 0) AS completedMinutes,
-         COALESCE(SUM(CASE WHEN status = 'scheduled' AND date >= ? THEN 1 ELSE 0 END), 0) AS upcomingLessons
+         COALESCE(SUM(CASE WHEN status = 'scheduled' AND date >= ? THEN 1 ELSE 0 END), 0) AS upcomingLessons,
+         COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelledLessons,
+         COALESCE(SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END), 0) AS noShowLessons
        FROM lessons WHERE student_id = ?`,
       today,
       studentId
     )
     .then(
       (row) =>
-        row ?? { completedLessons: 0, completedMinutes: 0, upcomingLessons: 0 }
+        row ?? {
+          completedLessons: 0,
+          completedMinutes: 0,
+          upcomingLessons: 0,
+          cancelledLessons: 0,
+          noShowLessons: 0,
+        }
     );
 }
 
@@ -212,6 +225,7 @@ const LESSON_SELECT = `
   SELECT l.id, l.student_id AS studentId, l.instructor_id AS instructorId, l.date,
          l.start_minutes AS startMinutes, l.duration_minutes AS durationMinutes,
          l.type, l.pickup_location AS pickupLocation, l.notes, l.status,
+         l.cancellation_reason AS cancellationReason,
          s.first_name AS studentFirstName, s.last_name AS studentLastName,
          i.name AS instructorName, i.color AS instructorColor
   FROM lessons l
@@ -268,7 +282,8 @@ export function getLesson(db: SQLiteDatabase, id: number): Promise<Lesson | null
   return db.getFirstAsync<Lesson>(
     `SELECT id, student_id AS studentId, instructor_id AS instructorId, date,
             start_minutes AS startMinutes, duration_minutes AS durationMinutes,
-            type, pickup_location AS pickupLocation, notes, status
+            type, pickup_location AS pickupLocation, notes, status,
+            cancellation_reason AS cancellationReason
      FROM lessons WHERE id = ?`,
     id
   );
@@ -284,29 +299,13 @@ export interface LessonInput {
   pickupLocation?: string | null;
   notes?: string | null;
   status: LessonStatus;
+  cancellationReason?: string | null;
 }
 
 export async function createLesson(db: SQLiteDatabase, input: LessonInput): Promise<number> {
   const result = await db.runAsync(
-    `INSERT INTO lessons (student_id, instructor_id, date, start_minutes, duration_minutes, type, pickup_location, notes, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    input.studentId,
-    input.instructorId,
-    input.date,
-    input.startMinutes,
-    input.durationMinutes,
-    input.type,
-    input.pickupLocation ?? null,
-    input.notes ?? null,
-    input.status
-  );
-  return result.lastInsertRowId;
-}
-
-export async function updateLesson(db: SQLiteDatabase, id: number, input: LessonInput): Promise<void> {
-  await db.runAsync(
-    `UPDATE lessons SET student_id = ?, instructor_id = ?, date = ?, start_minutes = ?, duration_minutes = ?,
-       type = ?, pickup_location = ?, notes = ?, status = ? WHERE id = ?`,
+    `INSERT INTO lessons (student_id, instructor_id, date, start_minutes, duration_minutes, type, pickup_location, notes, status, cancellation_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     input.studentId,
     input.instructorId,
     input.date,
@@ -316,8 +315,73 @@ export async function updateLesson(db: SQLiteDatabase, id: number, input: Lesson
     input.pickupLocation ?? null,
     input.notes ?? null,
     input.status,
+    input.cancellationReason ?? null
+  );
+  return result.lastInsertRowId;
+}
+
+export async function updateLesson(db: SQLiteDatabase, id: number, input: LessonInput): Promise<void> {
+  await db.runAsync(
+    `UPDATE lessons SET student_id = ?, instructor_id = ?, date = ?, start_minutes = ?, duration_minutes = ?,
+       type = ?, pickup_location = ?, notes = ?, status = ?, cancellation_reason = ? WHERE id = ?`,
+    input.studentId,
+    input.instructorId,
+    input.date,
+    input.startMinutes,
+    input.durationMinutes,
+    input.type,
+    input.pickupLocation ?? null,
+    input.notes ?? null,
+    input.status,
+    input.cancellationReason ?? null,
     id
   );
+}
+
+export async function setLessonStatus(
+  db: SQLiteDatabase,
+  id: number,
+  status: LessonStatus,
+  cancellationReason?: string | null
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE lessons SET status = ?, cancellation_reason = ? WHERE id = ?',
+    status,
+    cancellationReason ?? null,
+    id
+  );
+}
+
+/**
+ * Scheduled lessons that overlap the proposed slot for the same instructor
+ * or the same student. Used to warn when booking (and skip recurring copies).
+ */
+export function findLessonConflicts(
+  db: SQLiteDatabase,
+  input: {
+    instructorId: number;
+    studentId: number;
+    date: string;
+    startMinutes: number;
+    durationMinutes: number;
+    excludeLessonId?: number;
+  }
+): Promise<LessonListItem[]> {
+  const params: (string | number)[] = [
+    input.date,
+    input.startMinutes + input.durationMinutes,
+    input.startMinutes,
+    input.instructorId,
+    input.studentId,
+  ];
+  let where = `WHERE l.date = ? AND l.status = 'scheduled'
+    AND l.start_minutes < ? AND l.start_minutes + l.duration_minutes > ?
+    AND (l.instructor_id = ? OR l.student_id = ?)`;
+  if (input.excludeLessonId) {
+    where += ' AND l.id != ?';
+    params.push(input.excludeLessonId);
+  }
+  return db.getAllAsync<LessonListItem>(`${LESSON_SELECT} ${where} ORDER BY l.start_minutes`, ...params);
 }
 
 export async function deleteLesson(db: SQLiteDatabase, id: number): Promise<void> {
@@ -350,6 +414,98 @@ export function listTheoryAttempts(db: SQLiteDatabase, limit = 15): Promise<Theo
      ORDER BY t.id DESC LIMIT ?`,
     limit
   );
+}
+
+// --- lesson recaps ---
+
+export async function getLessonRecap(db: SQLiteDatabase, lessonId: number): Promise<LessonRecap | null> {
+  const row = await db.getFirstAsync<{ lessonId: number; note: string | null; skillIds: string; createdAt: string }>(
+    'SELECT lesson_id AS lessonId, note, skill_ids AS skillIds, created_at AS createdAt FROM lesson_recaps WHERE lesson_id = ?',
+    lessonId
+  );
+  if (!row) return null;
+  return { ...row, skillIds: JSON.parse(row.skillIds) as number[] };
+}
+
+export async function upsertLessonRecap(
+  db: SQLiteDatabase,
+  input: { lessonId: number; note: string | null; skillIds: number[] }
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO lesson_recaps (lesson_id, note, skill_ids, created_at)
+     VALUES (?, ?, ?, datetime('now', 'localtime'))
+     ON CONFLICT (lesson_id) DO UPDATE SET note = excluded.note, skill_ids = excluded.skill_ids`,
+    input.lessonId,
+    input.note,
+    JSON.stringify(input.skillIds)
+  );
+}
+
+export async function listRecapsForStudent(
+  db: SQLiteDatabase,
+  studentId: number,
+  limit = 20
+): Promise<RecapListItem[]> {
+  const rows = await db.getAllAsync<Omit<RecapListItem, 'skillIds'> & { skillIds: string }>(
+    `SELECT r.lesson_id AS lessonId, r.note, r.skill_ids AS skillIds,
+            l.date, l.start_minutes AS startMinutes, l.duration_minutes AS durationMinutes, l.type
+     FROM lesson_recaps r
+     JOIN lessons l ON l.id = r.lesson_id
+     WHERE l.student_id = ?
+     ORDER BY l.date DESC, l.start_minutes DESC LIMIT ?`,
+    studentId,
+    limit
+  );
+  return rows.map((row) => ({ ...row, skillIds: JSON.parse(row.skillIds) as number[] }));
+}
+
+// --- mock driving tests ---
+
+export async function createMockTestResult(
+  db: SQLiteDatabase,
+  input: {
+    studentId: number;
+    result: MockTestResultVerdict;
+    faults: MockFaultEntry[];
+    notes: string | null;
+  }
+): Promise<number> {
+  const drivingFaults = input.faults.reduce((sum, f) => sum + f.driving, 0);
+  const seriousFaults = input.faults.filter((f) => f.serious).length;
+  const dangerousFaults = input.faults.filter((f) => f.dangerous).length;
+  const kept = input.faults.filter((f) => f.driving > 0 || f.serious || f.dangerous);
+  const result = await db.runAsync(
+    `INSERT INTO mock_test_results (student_id, result, driving_faults, serious_faults, dangerous_faults, faults_json, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    input.studentId,
+    input.result,
+    drivingFaults,
+    seriousFaults,
+    dangerousFaults,
+    JSON.stringify(kept),
+    input.notes
+  );
+  return result.lastInsertRowId;
+}
+
+export async function listMockTestsForStudent(
+  db: SQLiteDatabase,
+  studentId: number,
+  limit = 10
+): Promise<MockTestResult[]> {
+  const rows = await db.getAllAsync<Omit<MockTestResult, 'faults'> & { faultsJson: string }>(
+    `SELECT id, student_id AS studentId, taken_at AS takenAt, result,
+            driving_faults AS drivingFaults, serious_faults AS seriousFaults,
+            dangerous_faults AS dangerousFaults, faults_json AS faultsJson, notes
+     FROM mock_test_results WHERE student_id = ? ORDER BY id DESC LIMIT ?`,
+    studentId,
+    limit
+  );
+  return rows.map(({ faultsJson, ...row }) => ({ ...row, faults: JSON.parse(faultsJson) as MockFaultEntry[] }));
+}
+
+export async function deleteMockTestResult(db: SQLiteDatabase, id: number): Promise<void> {
+  await db.runAsync('DELETE FROM mock_test_results WHERE id = ?', id);
 }
 
 // --- syllabus (skills) management ---

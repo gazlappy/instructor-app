@@ -12,7 +12,15 @@ import { DateInput } from '@/components/ui/date-input';
 import { Field, FormInput } from '@/components/ui/form';
 import { Select } from '@/components/ui/select';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { createLesson, deleteLesson, listInstructors, listStudents, updateLesson } from '@/db/queries';
+import {
+  createLesson,
+  deleteLesson,
+  findLessonConflicts,
+  getLessonRecap,
+  listInstructors,
+  listStudents,
+  updateLesson,
+} from '@/db/queries';
 import {
   LESSON_STATUS_LABELS,
   LESSON_TYPE_LABELS,
@@ -24,7 +32,10 @@ import { useQuery } from '@/db/use-query';
 import { useAppSettings } from '@/hooks/app-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDestructive, showAlert } from '@/lib/alert';
-import { formatMinutes, todayKey } from '@/lib/dates';
+import { addDays, formatDateUK, formatMinutes, todayKey } from '@/lib/dates';
+
+/** Total weekly bookings offered by the "Repeat weekly" picker (1 = just this lesson). */
+const REPEAT_OPTIONS = [1, 4, 8, 12] as const;
 
 
 export function LessonForm({
@@ -59,6 +70,22 @@ export function LessonForm({
   );
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [status, setStatus] = useState<LessonStatus>(existing?.status ?? 'scheduled');
+  const [cancellationReason, setCancellationReason] = useState(existing?.cancellationReason ?? '');
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
+
+  const { data: recap } = useQuery(
+    async (db) => (existing ? getLessonRecap(db, existing.id) : null),
+    [existing?.id]
+  );
+
+  // Saving a recap marks the lesson completed while this form stays mounted
+  // underneath — sync the status field when the refetched lesson changes.
+  const [syncedStatus, setSyncedStatus] = useState(existing?.status);
+  if (existing && existing.status !== syncedStatus) {
+    setSyncedStatus(existing.status);
+    setStatus(existing.status);
+    setCancellationReason(existing.cancellationReason ?? '');
+  }
 
   const selectableStudents = useMemo(
     () => (students ?? []).filter((s) => s.status !== 'passed' || s.id === studentId),
@@ -103,6 +130,7 @@ export function LessonForm({
       showAlert('Add an instructor first', 'Create an instructor in the Settings tab.');
       return;
     }
+    const cancelled = status === 'cancelled' || status === 'no_show';
     const input = {
       studentId,
       instructorId: effectiveInstructorId,
@@ -113,13 +141,58 @@ export function LessonForm({
       pickupLocation: effectivePickup.trim() || null,
       notes: notes.trim() || null,
       status,
+      cancellationReason: cancelled ? cancellationReason.trim() || null : null,
     };
-    if (existing) {
-      await updateLesson(db, existing.id, input);
-    } else {
+
+    const doSave = async () => {
+      if (existing) {
+        await updateLesson(db, existing.id, input);
+        router.back();
+        return;
+      }
       await createLesson(db, input);
+      // Weekly repeats: book the following weeks too, skipping any that clash.
+      let booked = 1;
+      let skipped = 0;
+      for (let week = 1; week < repeatWeeks; week++) {
+        const repeatDate = addDays(date, week * 7);
+        const clashes = await findLessonConflicts(db, { ...input, date: repeatDate });
+        if (clashes.length > 0) {
+          skipped++;
+        } else {
+          await createLesson(db, { ...input, date: repeatDate });
+          booked++;
+        }
+      }
+      if (repeatWeeks > 1) {
+        showAlert(
+          `Booked ${booked} lessons`,
+          skipped > 0
+            ? `${skipped} week${skipped === 1 ? ' was' : 's were'} skipped because of a clash.`
+            : `Weekly until ${formatDateUK(addDays(date, (repeatWeeks - 1) * 7))}.`
+        );
+      }
+      router.back();
+    };
+
+    // A cancelled/no-show lesson isn't really occupying the slot, so skip the check.
+    const conflicts = cancelled
+      ? []
+      : await findLessonConflicts(db, { ...input, excludeLessonId: existing?.id });
+    if (conflicts.length > 0) {
+      const clash = conflicts[0];
+      confirmDestructive(
+        'Time clash',
+        `This overlaps ${clash.studentFirstName} ${clash.studentLastName}'s ${formatMinutes(
+          clash.startMinutes,
+          settings.use12HourTime
+        )} booking on ${formatDateUK(input.date)}.`,
+        'Book anyway',
+        doSave
+      );
+      return;
     }
-    router.back();
+    await doSave();
   };
 
   const confirmDelete = () => {
@@ -213,6 +286,27 @@ export function LessonForm({
             />
           </Field>
 
+          {!existing && (
+            <Field label="Repeat weekly">
+              <View style={styles.chipRow}>
+                {REPEAT_OPTIONS.map((weeks) => (
+                  <Chip
+                    key={weeks}
+                    label={weeks === 1 ? 'Off' : `${weeks} weeks`}
+                    selected={repeatWeeks === weeks}
+                    onPress={() => setRepeatWeeks(weeks)}
+                  />
+                ))}
+              </View>
+              {repeatWeeks > 1 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Books this slot every week — {repeatWeeks} lessons, last one{' '}
+                  {formatDateUK(addDays(date, (repeatWeeks - 1) * 7))}. Clashing weeks are skipped.
+                </ThemedText>
+              )}
+            </Field>
+          )}
+
           {existing && (
             <Field label="Status">
               <Select
@@ -224,6 +318,35 @@ export function LessonForm({
                 onChange={setStatus}
               />
             </Field>
+          )}
+
+          {existing && (status === 'cancelled' || status === 'no_show') && (
+            <Field label={status === 'cancelled' ? 'Cancellation reason' : 'No-show reason'}>
+              <FormInput
+                value={cancellationReason}
+                onChangeText={setCancellationReason}
+                placeholder="e.g. ill, holiday, forgot…"
+              />
+            </Field>
+          )}
+
+          {existing && (
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: '/lesson/recap', params: { id: String(existing.id) } })
+              }
+              style={({ pressed }) => pressed && styles.pressed}>
+              <View style={[styles.recapButton, { borderColor: theme.tintBorder }]}>
+                <ThemedText type="smallBold" style={{ color: theme.tint }}>
+                  {recap ? 'Edit lesson recap ››' : 'Complete & recap ››'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {recap
+                    ? 'Skills covered and notes from this lesson.'
+                    : 'Mark completed, tick off skills and jot a note.'}
+                </ThemedText>
+              </View>
+            </Pressable>
           )}
 
           <Field label="Pickup location">
@@ -284,5 +407,19 @@ const styles = StyleSheet.create({
   },
   spacer: {
     flex: 1,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  recapButton: {
+    borderWidth: 1.5,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.half,
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

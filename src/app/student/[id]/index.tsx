@@ -13,9 +13,12 @@ import { PassedStamp } from '@/components/ui/passed-stamp';
 import { RoadProgress } from '@/components/ui/road-progress';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
+  deleteMockTestResult,
   getProgressForStudent,
   getStudent,
   getStudentStats,
+  listMockTestsForStudent,
+  listRecapsForStudent,
   listUpcomingLessonsForStudent,
   setSkillLevel,
 } from '@/db/queries';
@@ -28,6 +31,7 @@ import {
 } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmDestructive } from '@/lib/alert';
 import { formatDateUK, fromDateKey, shortDayTitle, todayKey } from '@/lib/dates';
 import { mapsUrl } from '@/lib/links';
 
@@ -89,6 +93,11 @@ export default function StudentDetailScreen() {
     [studentId]
   );
   const { data: stats } = useQuery((db) => getStudentStats(db, studentId, todayKey()), [studentId]);
+  const { data: mockTests, refresh: refreshMockTests } = useQuery(
+    (db) => listMockTestsForStudent(db, studentId),
+    [studentId]
+  );
+  const { data: recaps } = useQuery((db) => listRecapsForStudent(db, studentId), [studentId]);
 
   const grouped = useMemo(() => {
     const groups: { category: string; skills: SkillProgressRow[] }[] = [];
@@ -160,6 +169,20 @@ export default function StudentDetailScreen() {
           <StatTile value={`${overallPct}%`} label="Progress" />
         </View>
 
+        {((stats?.cancelledLessons ?? 0) > 0 || (stats?.noShowLessons ?? 0) > 0) && (
+          <ThemedText type="small" style={{ color: theme.danger }}>
+            ⚠︎{' '}
+            {[
+              stats!.cancelledLessons > 0 &&
+                `${stats!.cancelledLessons} cancelled lesson${stats!.cancelledLessons === 1 ? '' : 's'}`,
+              stats!.noShowLessons > 0 &&
+                `${stats!.noShowLessons} no-show${stats!.noShowLessons === 1 ? '' : 's'}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </ThemedText>
+        )}
+
         {contactRows.length > 0 && (
           <ThemedView type="backgroundElement" style={styles.card}>
             {contactRows.map((row) =>
@@ -220,6 +243,95 @@ export default function StudentDetailScreen() {
                 showDate={shortDayTitle(lesson.date)}
                 onPress={() => router.push({ pathname: '/lesson/[id]', params: { id: String(lesson.id) } })}
               />
+            ))}
+          </View>
+        )}
+
+        {(recaps ?? []).length > 0 && (
+          <>
+            <SectionTitle label="LESSON RECAPS" />
+            <View style={styles.list}>
+              {(recaps ?? []).map((recap) => {
+                const skillNames = recap.skillIds
+                  .map((skillId) => progress?.find((row) => row.skillId === skillId)?.name)
+                  .filter(Boolean) as string[];
+                return (
+                  <Pressable
+                    key={recap.lessonId}
+                    onPress={() =>
+                      router.push({ pathname: '/lesson/recap', params: { id: String(recap.lessonId) } })
+                    }
+                    style={({ pressed }) => pressed && styles.pressed}>
+                    <ThemedView type="backgroundElement" style={styles.card}>
+                      <ThemedText type="smallBold">{shortDayTitle(recap.date)}</ThemedText>
+                      {skillNames.length > 0 && (
+                        <ThemedText type="small" style={{ color: theme.tint }}>
+                          {skillNames.join(' · ')}
+                        </ThemedText>
+                      )}
+                      {recap.note && <ThemedText type="small">{recap.note}</ThemedText>}
+                    </ThemedView>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        <SectionTitle
+          label="MOCK TESTS"
+          right={
+            <Chip
+              label="Record mock test"
+              onPress={() =>
+                router.push({ pathname: '/student/[id]/mock-test', params: { id: String(studentId) } })
+              }
+            />
+          }
+        />
+        {(mockTests ?? []).length === 0 ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            No mock tests recorded yet.
+          </ThemedText>
+        ) : (
+          <View style={styles.list}>
+            {(mockTests ?? []).map((mock) => (
+              <ThemedView key={mock.id} type="backgroundElement" style={styles.mockRow}>
+                <View
+                  style={[
+                    styles.mockBadge,
+                    { backgroundColor: mock.result === 'pass' ? theme.success : theme.danger },
+                  ]}>
+                  <ThemedText type="smallBold" style={{ color: theme.onTint }}>
+                    {mock.result === 'pass' ? 'PASS' : 'FAIL'}
+                  </ThemedText>
+                </View>
+                <View style={styles.flex}>
+                  <ThemedText type="small">{formatDateUK(mock.takenAt.slice(0, 10))}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {mock.drivingFaults} driving · {mock.seriousFaults} serious · {mock.dangerousFaults}{' '}
+                    dangerous
+                  </ThemedText>
+                  {mock.notes && (
+                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                      {mock.notes}
+                    </ThemedText>
+                  )}
+                </View>
+                <Pressable
+                  hitSlop={8}
+                  accessibilityLabel="Delete mock test result"
+                  onPress={() =>
+                    confirmDestructive('Delete this mock result?', 'This cannot be undone.', 'Delete', async () => {
+                      await deleteMockTestResult(db, mock.id);
+                      refreshMockTests();
+                    })
+                  }>
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    ✕
+                  </ThemedText>
+                </Pressable>
+              </ThemedView>
             ))}
           </View>
         )}
@@ -334,5 +446,20 @@ const styles = StyleSheet.create({
   levelLabel: {
     fontSize: 12,
     lineHeight: 16,
+  },
+  mockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+  },
+  mockBadge: {
+    borderRadius: 8,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

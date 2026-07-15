@@ -51,7 +51,11 @@ export function LessonCard({
               {showDate ? `${showDate} · ` : ''}
               {formatTimeRange(lesson.startMinutes, lesson.durationMinutes, settings.use12HourTime)} ·{' '}
               {LESSON_TYPE_LABELS[lesson.type]}
-              {lesson.pickupLocation ? ` · ${lesson.pickupLocation}` : ''}
+              {inactive && lesson.cancellationReason
+                ? ` · ${lesson.cancellationReason}`
+                : lesson.pickupLocation
+                  ? ` · ${lesson.pickupLocation}`
+                  : ''}
             </ThemedText>
           </View>
         </View>

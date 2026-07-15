@@ -36,6 +36,8 @@ export interface StudentStats {
   completedLessons: number;
   completedMinutes: number;
   upcomingLessons: number;
+  cancelledLessons: number;
+  noShowLessons: number;
 }
 
 export const TRANSMISSION_LABELS: Record<Transmission, string> = {
@@ -73,6 +75,7 @@ export interface Lesson {
   pickupLocation: string | null;
   notes: string | null;
   status: LessonStatus;
+  cancellationReason: string | null;
 }
 
 export interface LessonListItem extends Lesson {
@@ -125,6 +128,76 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
   passed: 'Passed',
   paused: 'Paused',
 };
+
+// --- lesson recaps ---
+
+export interface LessonRecap {
+  lessonId: number;
+  note: string | null;
+  skillIds: number[];
+  createdAt: string;
+}
+
+/** A recap joined with its lesson, for the student-page timeline. */
+export interface RecapListItem {
+  lessonId: number;
+  note: string | null;
+  skillIds: number[];
+  date: string;
+  startMinutes: number;
+  durationMinutes: number;
+  type: LessonType;
+}
+
+// --- mock driving tests ---
+
+export type MockTestResultVerdict = 'pass' | 'fail';
+
+/** One assessment row on the mock test marking sheet (our own wording). */
+export interface MockFaultEntry {
+  item: string;
+  driving: number;
+  serious: boolean;
+  dangerous: boolean;
+}
+
+export interface MockTestResult {
+  id: number;
+  studentId: number;
+  takenAt: string;
+  result: MockTestResultVerdict;
+  drivingFaults: number;
+  seriousFaults: number;
+  dangerousFaults: number;
+  faults: MockFaultEntry[];
+  notes: string | null;
+}
+
+/**
+ * Assessment items marked during a mock driving test. Our own labels,
+ * covering the same ground an examiner watches on the practical test.
+ */
+export const MOCK_TEST_ITEMS = [
+  'Safety checks & precautions',
+  'Vehicle control',
+  'Moving away safely',
+  'Use of mirrors',
+  'Signals',
+  'Junction approach & turns',
+  'Judgement when meeting traffic',
+  'Road positioning',
+  'Pedestrian crossings',
+  'Following distance',
+  'Making progress',
+  'Responding to signs & signals',
+  'Awareness & planning',
+  'Reversing manoeuvre',
+  'Emergency stop',
+  'Independent driving',
+] as const;
+
+/** A mock fails on any serious/dangerous fault, or 16+ driving faults. */
+export const MOCK_TEST_DRIVING_FAULT_LIMIT = 15;
 
 export const INSTRUCTOR_COLORS = [
   '#3c87f7',

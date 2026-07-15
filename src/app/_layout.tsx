@@ -19,8 +19,10 @@ function ThemedNavigator() {
         <Stack.Screen name="student/new" options={{ title: 'New student', presentation: 'modal' }} />
         <Stack.Screen name="student/[id]/index" options={{ title: 'Student' }} />
         <Stack.Screen name="student/[id]/edit" options={{ title: 'Edit student', presentation: 'modal' }} />
+        <Stack.Screen name="student/[id]/mock-test" options={{ title: 'Mock test', presentation: 'modal' }} />
         <Stack.Screen name="lesson/new" options={{ title: 'New lesson', presentation: 'modal' }} />
         <Stack.Screen name="lesson/[id]" options={{ title: 'Lesson', presentation: 'modal' }} />
+        <Stack.Screen name="lesson/recap" options={{ title: 'Lesson recap', presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );

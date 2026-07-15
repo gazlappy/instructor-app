@@ -61,7 +61,7 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
   // Stamp the version after each step so an interrupted run resumes cleanly.
-  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4, migrateToV5];
+  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4, migrateToV5, migrateToV6];
   for (let v = version; v < migrations.length; v++) {
     await migrations[v](db);
     await db.execAsync(`PRAGMA user_version = ${v + 1}`);
@@ -72,6 +72,7 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   // (e.g. by an interrupted update).
   await migrateToV2(db);
   await migrateToV4(db);
+  await createV6Tables(db);
 }
 
 async function migrateToV1(db: SQLiteDatabase): Promise<void> {
@@ -185,9 +186,41 @@ async function migrateToV5(db: SQLiteDatabase): Promise<void> {
   `);
 }
 
+/** Idempotent half of v6, re-run as a safety net (see migrateDb). */
+async function createV6Tables(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS lesson_recaps (
+      lesson_id INTEGER PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+      note TEXT,
+      skill_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS mock_test_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      taken_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      result TEXT NOT NULL,
+      driving_faults INTEGER NOT NULL DEFAULT 0,
+      serious_faults INTEGER NOT NULL DEFAULT 0,
+      dangerous_faults INTEGER NOT NULL DEFAULT 0,
+      faults_json TEXT NOT NULL DEFAULT '[]',
+      notes TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_mock_tests_student ON mock_test_results(student_id);
+  `);
+}
+
+async function migrateToV6(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`ALTER TABLE lessons ADD COLUMN cancellation_reason TEXT;`);
+  await createV6Tables(db);
+}
+
 /** Wipes every user record (keeps the skills syllabus) and reseeds the starter instructor. */
 export async function eraseAllData(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
+    DELETE FROM lesson_recaps;
+    DELETE FROM mock_test_results;
     DELETE FROM lessons;
     DELETE FROM skill_progress;
     DELETE FROM theory_attempts;
