@@ -389,16 +389,18 @@ function CarTopDown({
   color,
   opacity = 1,
   rotate = 0,
+  carScale = 1,
 }: {
   x: number;
   y: number;
   color: string;
   opacity?: number;
   rotate?: number;
+  carScale?: number;
 }) {
   // A 26×48 car drawn about its centre for easy rotation.
   return (
-    <G transform={`translate(${x} ${y}) rotate(${rotate})`} opacity={opacity}>
+    <G transform={`translate(${x} ${y}) rotate(${rotate}) scale(${carScale})`} opacity={opacity}>
       <Rect x={-15.5} y={-17} width={4} height={11} rx={2} fill="#1D2025" />
       <Rect x={11.5} y={-17} width={4} height={11} rx={2} fill="#1D2025" />
       <Rect x={-15.5} y={7} width={4} height={11} rx={2} fill="#1D2025" />
@@ -502,127 +504,155 @@ export function MirrorZonesDiagram({ size = 260 }: { size?: number }) {
   );
 }
 
-// --- parallel parking ---
+// --- parallel parking: reverse into a gap at the left kerb ---
 
+const PP_VIEW_H = 200;
+const PP_MS = 12000;
+const PP_CAR_SIZE = 0.8;
+
+// Pull up level with the lead car, reverse straight to its bumper, full
+// left lock to swing the tail in, right lock to straighten, then a nudge
+// forward to centre the car in the gap.
 const PARALLEL_PATH: CarPath = {
-  t: [0, 0.2, 0.3, 0.48, 0.64, 0.9, 1],
-  x: [138, 138, 138, 158, 182, 182, 182],
-  y: [186, 52, 52, 96, 140, 140, 140],
-  r: [0, 0, 0, -38, 0, 0, 0],
+  t: [0, 0.05, 0.12, 0.19, 0.22, 0.3, 0.35, 0.4, 0.46, 0.52, 0.58, 0.64, 0.67, 0.73, 0.9, 1],
+  x: [78, 78, 78, 78, 78, 78, 78, 72, 64, 57, 53, 51, 51, 51, 51, 51],
+  y: [212, 212, 120, 68, 60, 60, 70, 80, 91, 101, 110, 117, 119, 104, 104, 104],
+  r: [0, 0, 0, 0, 0, 0, 0, 15, 30, 38, 20, 6, 0, 0, 0, 0],
 };
-const PARALLEL_FADE: FadeTrack = { t: [0, 0.05, 0.88, 0.95, 1], v: [0, 1, 1, 0, 0] };
-const PARALLEL_MS = 9000;
+const PARALLEL_FADE: FadeTrack = { t: [0, 0.05, 0.88, 0.94, 1], v: [0, 1, 1, 0, 0] };
+
+const PP_PHASE_LEVEL: [number, number] = [0.05, 0.2];
+const PP_PHASE_BACK: [number, number] = [0.23, 0.34];
+const PP_PHASE_SWING: [number, number] = [0.36, 0.53];
+const PP_PHASE_STRAIGHTEN: [number, number] = [0.55, 0.68];
+const PP_PHASE_DONE: [number, number] = [0.72, 0.88];
 
 export function ParallelParkDiagram({ size = 260 }: { size?: number }) {
   const theme = useTheme();
   const scale = size / VIEW_W;
-  const progress = useLoopProgress(PARALLEL_MS);
+  const progress = useLoopProgress(PP_MS);
+  const svgH = (size * PP_VIEW_H) / VIEW_W;
 
   return (
-    <DiagramShell size={size}>
-      <Svg width={size} height={size * 0.75} viewBox="0 0 240 180">
-        {/* kerb */}
-        <Line x1={206} y1={0} x2={206} y2={180} stroke={theme.textSecondary} strokeWidth={4} />
-        {/* lead car parked at the kerb */}
-        <CarTopDown x={182} y={44} color={theme.textSecondary} opacity={0.55} />
+    <View style={{ width: size }}>
+      <View style={[styles.scene, { width: size, height: svgH }]}>
+        <Svg width={size} height={svgH} viewBox={`0 0 ${VIEW_W} ${PP_VIEW_H}`}>
+          {/* two-way street, kerbs both sides */}
+          <Rect x={36} y={0} width={168} height={PP_VIEW_H} fill={theme.roadLine} />
+          <Line x1={36} y1={0} x2={36} y2={PP_VIEW_H} stroke={theme.textSecondary} strokeWidth={3} />
+          <Line x1={204} y1={0} x2={204} y2={PP_VIEW_H} stroke={theme.textSecondary} strokeWidth={3} />
+          <Line
+            x1={128}
+            y1={0}
+            x2={128}
+            y2={PP_VIEW_H}
+            stroke={theme.roadDash}
+            strokeWidth={2}
+            strokeDasharray="10 9"
+            opacity={0.8}
+          />
 
-        {/* key positions, kept faint under the moving car */}
-        <CarTopDown x={138} y={52} color={theme.tint} opacity={0.18} />
-        <CarTopDown x={158} y={96} color={theme.tint} opacity={0.18} rotate={-38} />
-        <CarTopDown x={182} y={140} color={theme.tint} opacity={0.18} />
+          {/* the gap: a car parked ahead of it and one behind */}
+          <CarTopDown x={49} y={60} color={theme.textSecondary} opacity={0.6} carScale={PP_CAR_SIZE} />
+          <CarTopDown x={49} y={150} color={theme.textSecondary} opacity={0.6} carScale={PP_CAR_SIZE} />
+        </Svg>
 
-        {/* the path */}
-        <Path
-          d="M138,74 C138,102 176,104 180,120"
-          stroke={theme.tint}
-          strokeWidth={2.5}
-          strokeDasharray="6 5"
-          fill="none"
+        <AnimatedCar
+          progress={progress}
+          durationMs={PP_MS}
+          path={PARALLEL_PATH}
+          fade={PARALLEL_FADE}
+          scale={scale}
+          sizeScale={PP_CAR_SIZE}
+          color={theme.tint}
+          indicatorLeft={[[0.04, 0.28]]}
+          brake={[[0.2, 0.32], [0.75, 0.88]]}
+          reverse={[[0.32, 0.67]]}
         />
-        <Polygon points="182,130 174,118 186,116" fill={theme.tint} />
+      </View>
 
-        <SvgText x={124} y={36} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          1. level, 1 m gap
-        </SvgText>
-        <SvgText x={92} y={100} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          2. left lock to 45°
-        </SvgText>
-        <SvgText x={106} y={156} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          3. straighten at kerb
-        </SvgText>
-      </Svg>
-      <AnimatedCar
-        progress={progress}
-        durationMs={PARALLEL_MS}
-        path={PARALLEL_PATH}
-        fade={PARALLEL_FADE}
-        scale={scale}
-        color={theme.tint}
-        indicatorLeft={[[0.06, 0.3]]}
-        brake={[[0.2, 0.3], [0.64, 0.74]]}
-        reverse={[[0.3, 0.64]]}
-      />
-    </DiagramShell>
+      <View style={styles.captionStrip}>
+        <PhaseCaption progress={progress} range={PP_PHASE_LEVEL} label="signal left, pull up level — a metre out" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PP_PHASE_BACK} label="all-round check, reverse to its rear bumper" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PP_PHASE_SWING} label="full left lock — swing the tail in" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PP_PHASE_STRAIGHTEN} label="right lock to straighten as you tuck in" color={theme.tint} />
+        <PhaseCaption progress={progress} range={PP_PHASE_DONE} label="settle forward — snug to the kerb, done" color={theme.success} />
+      </View>
+    </View>
   );
 }
 
-// --- bay parking ---
+// --- bay parking: reverse into the empty bay between two neighbours ---
 
+const BAY_MS = 11000;
+const BAY_CAR_SIZE = 0.8;
+
+// Drive along the aisle past the target bay, pause shoulder-level with the
+// far line, then full lock and let the tail swing in; straighten and creep
+// back until centred.
 const BAY_PATH: CarPath = {
-  t: [0, 0.3, 0.4, 0.48, 0.56, 0.64, 0.72, 0.9, 1],
-  x: [-16, 150, 150, 138, 124, 120, 120, 120, 120],
-  y: [44, 44, 44, 50, 72, 100, 146, 146, 146],
-  r: [90, 90, 90, 62, 28, 8, 0, 0, 0],
+  t: [0, 0.05, 0.16, 0.25, 0.35, 0.4, 0.46, 0.52, 0.57, 0.6, 0.68, 0.9, 1],
+  x: [-20, -20, 80, 148, 148, 140, 130, 122, 120, 120, 120, 120, 120],
+  y: [56, 56, 56, 56, 56, 58, 66, 80, 94, 104, 142, 142, 142],
+  r: [90, 90, 90, 90, 90, 80, 55, 26, 8, 0, 0, 0, 0],
 };
-const BAY_FADE: FadeTrack = { t: [0, 0.05, 0.88, 0.95, 1], v: [0, 1, 1, 0, 0] };
-const BAY_MS = 10000;
+const BAY_FADE: FadeTrack = { t: [0, 0.05, 0.88, 0.94, 1], v: [0, 1, 1, 0, 0] };
+
+const BAY_PHASE_PAST: [number, number] = [0.05, 0.22];
+const BAY_PHASE_CHECK: [number, number] = [0.26, 0.35];
+const BAY_PHASE_SWING: [number, number] = [0.37, 0.58];
+const BAY_PHASE_CREEP: [number, number] = [0.59, 0.7];
+const BAY_PHASE_DONE: [number, number] = [0.73, 0.88];
 
 export function BayParkDiagram({ size = 260 }: { size?: number }) {
   const theme = useTheme();
   const scale = size / VIEW_W;
   const progress = useLoopProgress(BAY_MS);
+  const svgH = (size * VIEW_H) / VIEW_W;
 
   return (
-    <DiagramShell size={size}>
-      <Svg width={size} height={size * 0.75} viewBox="0 0 240 180">
-        {/* bay lines */}
-        {[60, 100, 140, 180].map((x) => (
-          <Line key={x} x1={x} y1={112} x2={x} y2={178} stroke={theme.textSecondary} strokeWidth={3} />
-        ))}
-        {/* a parked neighbour */}
-        <CarTopDown x={160} y={146} color={theme.textSecondary} opacity={0.5} />
+    <View style={{ width: size }}>
+      <View style={[styles.scene, { width: size, height: svgH }]}>
+        <Svg width={size} height={svgH} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+          {/* car-park tarmac */}
+          <Rect x={0} y={0} width={VIEW_W} height={VIEW_H} fill={theme.roadLine} />
 
-        {/* target position, kept faint under the moving car */}
-        <CarTopDown x={120} y={144} color={theme.tint} opacity={0.18} />
+          {/* painted aisle arrow */}
+          <Rect x={16} y={53} width={16} height={6} fill={theme.roadDash} opacity={0.9} />
+          <Polygon points="32,47 32,65 46,56" fill={theme.roadDash} opacity={0.9} />
 
-        {/* the path */}
-        <Path
-          d="M150,52 C138,66 124,74 120,104"
-          stroke={theme.tint}
-          strokeWidth={2.5}
-          strokeDasharray="6 5"
-          fill="none"
+          {/* the bays */}
+          {[60, 100, 140, 180].map((x) => (
+            <Line key={x} x1={x} y1={112} x2={x} y2={176} stroke={theme.roadDash} strokeWidth={2.5} />
+          ))}
+          <Line x1={59} y1={176} x2={181} y2={176} stroke={theme.roadDash} strokeWidth={2.5} />
+
+          {/* neighbours either side of the empty bay */}
+          <CarTopDown x={80} y={142} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
+          <CarTopDown x={160} y={142} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
+        </Svg>
+
+        <AnimatedCar
+          progress={progress}
+          durationMs={BAY_MS}
+          path={BAY_PATH}
+          fade={BAY_FADE}
+          scale={scale}
+          sizeScale={BAY_CAR_SIZE}
+          color={theme.tint}
+          brake={[[0.23, 0.35], [0.7, 0.84]]}
+          reverse={[[0.35, 0.68]]}
         />
-        <Polygon points="120,116 113,104 127,104" fill={theme.tint} />
+      </View>
 
-        <SvgText x={28} y={24} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          1. drive past, shoulder level with the far line
-        </SvgText>
-        <SvgText x={132} y={98} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          2. full lock, creep back
-        </SvgText>
-      </Svg>
-      <AnimatedCar
-        progress={progress}
-        durationMs={BAY_MS}
-        path={BAY_PATH}
-        fade={BAY_FADE}
-        scale={scale}
-        color={theme.tint}
-        brake={[[0.3, 0.4], [0.72, 0.8]]}
-        reverse={[[0.4, 0.72]]}
-      />
-    </DiagramShell>
+      <View style={styles.captionStrip}>
+        <PhaseCaption progress={progress} range={BAY_PHASE_PAST} label="drive past — shoulders level with the far line" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_CHECK} label="all-round check before you reverse" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_SWING} label="full lock — let the tail swing into the bay" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_CREEP} label="straighten and creep back" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_DONE} label="centred between the lines — handbrake on" color={theme.success} />
+      </View>
+    </View>
   );
 }
 
