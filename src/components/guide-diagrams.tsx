@@ -112,6 +112,7 @@ function AnimatedCar({
   path,
   fade,
   scale,
+  sizeScale = 1,
   color,
   indicatorLeft,
   indicatorRight,
@@ -123,6 +124,8 @@ function AnimatedCar({
   path: CarPath;
   fade?: FadeTrack;
   scale: number;
+  /** Shrinks the sprite (not the path) so the car suits the diagram's lane widths. */
+  sizeScale?: number;
   color: string;
   indicatorLeft?: LightRanges;
   indicatorRight?: LightRanges;
@@ -130,9 +133,10 @@ function AnimatedCar({
   reverse?: LightRanges;
 }) {
   // Sprite canvas is 32 wide so the tyres can poke out past the 26-wide body.
-  const w = 32 * scale;
-  const h = 48 * scale;
-  const dot = Math.max(4, 6 * scale);
+  const spriteScale = scale * sizeScale;
+  const w = 32 * spriteScale;
+  const h = 48 * spriteScale;
+  const dot = Math.max(3, 6 * spriteScale);
   const bodyLeft = (3 / 32) * w;
   const bodyRight = (29 / 32) * w;
 
@@ -627,17 +631,19 @@ export function BayParkDiagram({ size = 260 }: { size?: number }) {
 const RB_MS = 11000;
 const RB_CENTRE_X = 120;
 const RB_CENTRE_Y = 86;
-const RB_LANE_R = 48;
+/** Cars are drawn at 2/3 size here so a 26-wide sprite suits the 22-wide lanes. */
+const RB_CAR_SIZE = 0.66;
 
-/** Point on the circulating lane at `theta` degrees (0° = east, 90° = south). */
-function ringPoint(theta: number): { x: number; y: number } {
+/** Point at `theta` degrees (0° = east, 90° = south) and radius `radius`. */
+function ringPoint(theta: number, radius: number): { x: number; y: number } {
   const rad = (theta * Math.PI) / 180;
-  return { x: RB_CENTRE_X + RB_LANE_R * Math.cos(rad), y: RB_CENTRE_Y + RB_LANE_R * Math.sin(rad) };
+  return { x: RB_CENTRE_X + radius * Math.cos(rad), y: RB_CENTRE_Y + radius * Math.sin(rad) };
 }
 
-// Your run: approach, stop at the give-way line, join at θ=95°, circulate
-// clockwise to θ=335°, exit east. Sampled every 15° so the arc is smooth;
-// heading on the ring is the clockwise tangent (θ − 180°).
+// Your run: approach in the left lane, stop at the give-way line, join at
+// θ=95° and hold the lane nearest the island (right-turn discipline), then
+// drift out to the exit lane after the exit before yours and leave east.
+// Sampled every 15°; heading on the ring is the clockwise tangent (θ − 180°).
 const ROUNDABOUT_YOU: CarPath = (() => {
   const t: number[] = [];
   const x: number[] = [];
@@ -649,21 +655,25 @@ const ROUNDABOUT_YOU: CarPath = (() => {
     y.push(py);
     r.push(pr);
   };
-  add(0, 111, 196, 0);
-  add(0.05, 111, 196, 0);
-  add(0.15, 111, 181, 0);
-  add(0.22, 111, 174, 0); // front bumper on the give-way line
-  add(0.36, 111, 174, 0); // waiting for the gap
-  add(0.38, 111, 168, -10);
-  add(0.41, 113, 148, -55);
+  add(0, 109, 200, 0);
+  add(0.05, 109, 200, 0);
+  add(0.15, 109, 178, 0);
+  add(0.22, 109, 167, 0); // nose on the give-way line
+  add(0.36, 109, 167, 0); // waiting for the gap
+  add(0.385, 110, 157, -20);
+  add(0.41, 113, 146, -50);
   for (let theta = 95; theta <= 335; theta += 15) {
-    const p = ringPoint(theta);
+    // Inner lane (r=50) around; ease out to the exit lane (r=63) once past
+    // the exit before yours at the top (θ=270°).
+    const radius = theta <= 270 ? 50 : 50 + (13 * (theta - 270)) / 65;
+    const p = ringPoint(theta, radius);
     add(0.44 + (0.26 * (theta - 95)) / 240, p.x, p.y, theta - 180);
   }
-  add(0.735, 178, 71, 115);
-  add(0.77, 200, 77, 92);
-  add(0.83, 248, 77, 90);
-  add(1, 248, 77, 90);
+  add(0.73, 192, 64, 125);
+  add(0.76, 206, 73, 95);
+  add(0.8, 222, 75, 90);
+  add(0.86, 252, 75, 90);
+  add(1, 252, 75, 90);
   return { t, x, y, r };
 })();
 
@@ -678,7 +688,7 @@ const ROUNDABOUT_TRAFFIC: CarPath = (() => {
   for (let i = 0; i <= 40; i++) {
     const pt = i / 40;
     const theta = 255.6 + 720 * pt;
-    const p = ringPoint(theta);
+    const p = ringPoint(theta, 52);
     t.push(pt);
     x.push(p.x);
     y.push(p.y);
@@ -706,24 +716,24 @@ export function RoundaboutDiagram({ size = 260 }: { size?: number }) {
     <View style={{ width: size }}>
       <View style={[styles.scene, { width: size, height: svgH }]}>
         <Svg width={size} height={svgH} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
-          {/* four two-way arms, overlapping the ring so they join seamlessly */}
-          <Rect x={102} y={146} width={36} height={34} fill={theme.roadLine} />
-          <Rect x={102} y={0} width={36} height={30} fill={theme.roadLine} />
-          <Rect x={0} y={68} width={58} height={36} fill={theme.roadLine} />
-          <Rect x={182} y={68} width={58} height={36} fill={theme.roadLine} />
+          {/* four two-way arms (44 wide — a 22-unit lane each way), overlapping the ring */}
+          <Rect x={98} y={150} width={44} height={30} fill={theme.roadLine} />
+          <Rect x={98} y={0} width={44} height={22} fill={theme.roadLine} />
+          <Rect x={0} y={64} width={52} height={44} fill={theme.roadLine} />
+          <Rect x={188} y={64} width={52} height={44} fill={theme.roadLine} />
 
           {/* centre lines on the arms, stopping short of the junction mouths */}
-          <Line x1={120} y1={180} x2={120} y2={156} {...armCentreLine} />
-          <Line x1={120} y1={0} x2={120} y2={24} {...armCentreLine} />
-          <Line x1={0} y1={86} x2={36} y2={86} {...armCentreLine} />
-          <Line x1={204} y1={86} x2={240} y2={86} {...armCentreLine} />
+          <Line x1={120} y1={180} x2={120} y2={162} {...armCentreLine} />
+          <Line x1={120} y1={0} x2={120} y2={16} {...armCentreLine} />
+          <Line x1={0} y1={86} x2={38} y2={86} {...armCentreLine} />
+          <Line x1={202} y1={86} x2={240} y2={86} {...armCentreLine} />
 
-          {/* the circulating carriageway and island */}
-          <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={54} fill="none" stroke={theme.roadLine} strokeWidth={24} />
+          {/* the circulating carriageway (two lanes) and island */}
+          <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={57} fill="none" stroke={theme.roadLine} strokeWidth={30} />
           <Circle
             cx={RB_CENTRE_X}
             cy={RB_CENTRE_Y}
-            r={54}
+            r={57}
             fill="none"
             stroke={theme.roadDash}
             strokeWidth={1.5}
@@ -733,9 +743,15 @@ export function RoundaboutDiagram({ size = 260 }: { size?: number }) {
           <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={30} fill={theme.backgroundSelected} />
           <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={30} fill="none" stroke={theme.roadDash} strokeWidth={1.5} />
 
-          {/* give-way marking across your lane */}
-          <Line x1={103} y1={147} x2={119} y2={147} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
-          <Line x1={103} y1={152} x2={119} y2={152} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          {/* give-way markings at every entry, across the entering lane */}
+          <Line x1={99} y1={153} x2={119} y2={153} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={99} y1={157.5} x2={119} y2={157.5} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={121} y1={19} x2={141} y2={19} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={121} y1={14.5} x2={141} y2={14.5} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={45} y1={65} x2={45} y2={85} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={40.5} y1={65} x2={40.5} y2={85} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={195} y1={87} x2={195} y2={107} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={199.5} y1={87} x2={199.5} y2={107} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
         </Svg>
 
         <AnimatedCar
@@ -743,6 +759,7 @@ export function RoundaboutDiagram({ size = 260 }: { size?: number }) {
           durationMs={RB_MS}
           path={ROUNDABOUT_TRAFFIC}
           scale={scale}
+          sizeScale={RB_CAR_SIZE}
           color={theme.textSecondary}
         />
         <AnimatedCar
@@ -751,9 +768,10 @@ export function RoundaboutDiagram({ size = 260 }: { size?: number }) {
           path={ROUNDABOUT_YOU}
           fade={ROUNDABOUT_FADE}
           scale={scale}
+          sizeScale={RB_CAR_SIZE}
           color={theme.tint}
           indicatorRight={[[0.03, 0.63]]}
-          indicatorLeft={[[0.63, 0.8]]}
+          indicatorLeft={[[0.63, 0.82]]}
           brake={[[0.18, 0.38]]}
         />
       </View>
