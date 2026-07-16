@@ -622,65 +622,149 @@ export function BayParkDiagram({ size = 260 }: { size?: number }) {
   );
 }
 
-// --- roundabout: full lap to the third exit, with signal changes ---
+// --- roundabout: give way, join behind traffic, take the third exit ---
 
-const ROUNDABOUT_PATH: CarPath = {
-  t: [0, 0.13, 0.19, 0.25, 0.32, 0.39, 0.46, 0.53, 0.6, 0.66, 0.72, 0.78, 1],
-  x: [114, 114, 112, 96, 75, 75, 96, 120, 144, 162, 188, 232, 232],
-  y: [186, 142, 130, 128, 102, 70, 44, 38, 44, 62, 80, 86, 86],
-  r: [0, 0, -35, -60, -20, 20, 60, 90, 120, 140, 108, 90, 90],
-};
-const ROUNDABOUT_FADE: FadeTrack = { t: [0, 0.05, 0.78, 0.85, 1], v: [0, 1, 1, 0, 0] };
-const ROUNDABOUT_MS = 10000;
+const RB_MS = 11000;
+const RB_CENTRE_X = 120;
+const RB_CENTRE_Y = 86;
+const RB_LANE_R = 48;
+
+/** Point on the circulating lane at `theta` degrees (0° = east, 90° = south). */
+function ringPoint(theta: number): { x: number; y: number } {
+  const rad = (theta * Math.PI) / 180;
+  return { x: RB_CENTRE_X + RB_LANE_R * Math.cos(rad), y: RB_CENTRE_Y + RB_LANE_R * Math.sin(rad) };
+}
+
+// Your run: approach, stop at the give-way line, join at θ=95°, circulate
+// clockwise to θ=335°, exit east. Sampled every 15° so the arc is smooth;
+// heading on the ring is the clockwise tangent (θ − 180°).
+const ROUNDABOUT_YOU: CarPath = (() => {
+  const t: number[] = [];
+  const x: number[] = [];
+  const y: number[] = [];
+  const r: number[] = [];
+  const add = (pt: number, px: number, py: number, pr: number) => {
+    t.push(pt);
+    x.push(px);
+    y.push(py);
+    r.push(pr);
+  };
+  add(0, 111, 196, 0);
+  add(0.05, 111, 196, 0);
+  add(0.15, 111, 181, 0);
+  add(0.22, 111, 174, 0); // front bumper on the give-way line
+  add(0.36, 111, 174, 0); // waiting for the gap
+  add(0.38, 111, 168, -10);
+  add(0.41, 113, 148, -55);
+  for (let theta = 95; theta <= 335; theta += 15) {
+    const p = ringPoint(theta);
+    add(0.44 + (0.26 * (theta - 95)) / 240, p.x, p.y, theta - 180);
+  }
+  add(0.735, 178, 71, 115);
+  add(0.77, 200, 77, 92);
+  add(0.83, 248, 77, 90);
+  add(1, 248, 77, 90);
+  return { t, x, y, r };
+})();
+
+// Ambient traffic: two steady clockwise laps per cycle (an exact number of
+// laps, so the loop restart is seamless), timed to cross your entry at
+// t≈0.27 — right in front of you while you sit at the line.
+const ROUNDABOUT_TRAFFIC: CarPath = (() => {
+  const t: number[] = [];
+  const x: number[] = [];
+  const y: number[] = [];
+  const r: number[] = [];
+  for (let i = 0; i <= 40; i++) {
+    const pt = i / 40;
+    const theta = 255.6 + 720 * pt;
+    const p = ringPoint(theta);
+    t.push(pt);
+    x.push(p.x);
+    y.push(p.y);
+    r.push(theta - 180);
+  }
+  return { t, x, y, r };
+})();
+
+const ROUNDABOUT_FADE: FadeTrack = { t: [0, 0.05, 0.82, 0.88, 1], v: [0, 1, 1, 0, 0] };
+
+const RB_PHASE_APPROACH: [number, number] = [0.05, 0.2];
+const RB_PHASE_GIVE_WAY: [number, number] = [0.23, 0.37];
+const RB_PHASE_JOIN: [number, number] = [0.42, 0.6];
+const RB_PHASE_EXIT: [number, number] = [0.63, 0.8];
 
 export function RoundaboutDiagram({ size = 260 }: { size?: number }) {
   const theme = useTheme();
   const scale = size / VIEW_W;
-  const progress = useLoopProgress(ROUNDABOUT_MS);
+  const progress = useLoopProgress(RB_MS);
+  const svgH = (size * VIEW_H) / VIEW_W;
+
+  const armCentreLine = { stroke: theme.roadDash, strokeWidth: 2, strokeDasharray: '8 7' } as const;
 
   return (
-    <DiagramShell size={size}>
-      <Svg width={size} height={size * 0.75} viewBox="0 0 240 180">
-        {/* the island and circulating lane */}
-        <Circle cx={120} cy={86} r={54} fill="none" stroke={theme.roadLine} strokeWidth={22} />
-        <Circle cx={120} cy={86} r={54} fill="none" stroke={theme.roadDash} strokeWidth={1.5} strokeDasharray="7 7" />
-        <Circle cx={120} cy={86} r={26} fill={theme.backgroundSelected} />
+    <View style={{ width: size }}>
+      <View style={[styles.scene, { width: size, height: svgH }]}>
+        <Svg width={size} height={svgH} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+          {/* four two-way arms, overlapping the ring so they join seamlessly */}
+          <Rect x={102} y={146} width={36} height={34} fill={theme.roadLine} />
+          <Rect x={102} y={0} width={36} height={30} fill={theme.roadLine} />
+          <Rect x={0} y={68} width={58} height={36} fill={theme.roadLine} />
+          <Rect x={182} y={68} width={58} height={36} fill={theme.roadLine} />
 
-        {/* approach road and exits */}
-        <Rect x={109} y={140} width={22} height={40} fill={theme.roadLine} />
-        <Rect x={109} y={0} width={22} height={24} fill={theme.roadLine} />
-        <Rect x={0} y={75} width={26} height={22} fill={theme.roadLine} />
-        <Rect x={214} y={75} width={26} height={22} fill={theme.roadLine} />
+          {/* centre lines on the arms, stopping short of the junction mouths */}
+          <Line x1={120} y1={180} x2={120} y2={156} {...armCentreLine} />
+          <Line x1={120} y1={0} x2={120} y2={24} {...armCentreLine} />
+          <Line x1={0} y1={86} x2={36} y2={86} {...armCentreLine} />
+          <Line x1={204} y1={86} x2={240} y2={86} {...armCentreLine} />
 
-        {/* your path: enter from the bottom, leave at the third exit (right turn) */}
-        <Path
-          d="M114,176 L114,140 A48,48 0 1 1 208,86"
-          stroke={theme.tint}
-          strokeWidth={3}
-          strokeDasharray="7 5"
-          fill="none"
-          opacity={0.5}
+          {/* the circulating carriageway and island */}
+          <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={54} fill="none" stroke={theme.roadLine} strokeWidth={24} />
+          <Circle
+            cx={RB_CENTRE_X}
+            cy={RB_CENTRE_Y}
+            r={54}
+            fill="none"
+            stroke={theme.roadDash}
+            strokeWidth={1.5}
+            strokeDasharray="7 7"
+            opacity={0.7}
+          />
+          <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={30} fill={theme.backgroundSelected} />
+          <Circle cx={RB_CENTRE_X} cy={RB_CENTRE_Y} r={30} fill="none" stroke={theme.roadDash} strokeWidth={1.5} />
+
+          {/* give-way marking across your lane */}
+          <Line x1={103} y1={147} x2={119} y2={147} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+          <Line x1={103} y1={152} x2={119} y2={152} stroke={theme.roadDash} strokeWidth={2} strokeDasharray="4 3" />
+        </Svg>
+
+        <AnimatedCar
+          progress={progress}
+          durationMs={RB_MS}
+          path={ROUNDABOUT_TRAFFIC}
+          scale={scale}
+          color={theme.textSecondary}
         />
-        <Polygon points="220,86 206,79 206,93" fill={theme.tint} />
+        <AnimatedCar
+          progress={progress}
+          durationMs={RB_MS}
+          path={ROUNDABOUT_YOU}
+          fade={ROUNDABOUT_FADE}
+          scale={scale}
+          color={theme.tint}
+          indicatorRight={[[0.03, 0.63]]}
+          indicatorLeft={[[0.63, 0.8]]}
+          brake={[[0.18, 0.38]]}
+        />
+      </View>
 
-        <SvgText x={10} y={16} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          signal right on approach,
-        </SvgText>
-        <SvgText x={10} y={28} fontSize={10} fontWeight="bold" fill={theme.tint}>
-          left after the exit before yours
-        </SvgText>
-      </Svg>
-      <AnimatedCar
-        progress={progress}
-        durationMs={ROUNDABOUT_MS}
-        path={ROUNDABOUT_PATH}
-        fade={ROUNDABOUT_FADE}
-        scale={scale}
-        color={theme.tint}
-        indicatorRight={[[0.02, 0.46]]}
-        indicatorLeft={[[0.53, 0.78]]}
-      />
-    </DiagramShell>
+      <View style={styles.captionStrip}>
+        <PhaseCaption progress={progress} range={RB_PHASE_APPROACH} label="approach slowly — mirror, signal right" color={theme.tint} />
+        <PhaseCaption progress={progress} range={RB_PHASE_GIVE_WAY} label="give way to traffic from the right" color={AMBER} />
+        <PhaseCaption progress={progress} range={RB_PHASE_JOIN} label="clear — join, keep the right signal on" color={theme.tint} />
+        <PhaseCaption progress={progress} range={RB_PHASE_EXIT} label="past the exit before yours — signal left & leave" color={theme.success} />
+      </View>
+    </View>
   );
 }
 
