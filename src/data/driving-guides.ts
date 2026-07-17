@@ -214,16 +214,18 @@ export const DRIVING_GUIDES: DrivingGuide[] = [
     title: 'Bay parking',
     emoji: '🚙',
     group: 'Manoeuvres',
-    summary: 'Reversing in with the far-line reference, plus the forward-bay alternative.',
+    summary: 'Reversing in by counting three white lines, plus the forward-bay alternative.',
     intro:
       'Reversing in is the tidier habit — you drive out forwards with full visibility. Walking pace is the whole trick: speed is the enemy of accuracy.',
     diagram: 'bay',
     sections: [
       {
-        heading: 'Reverse bay parking',
+        heading: 'Reverse bay parking — the three-lines method',
         points: [
-          'Drive past your chosen bay and stop when your shoulder lines up with its far line.',
-          'Full lock towards the bay and creep backwards.',
+          'Line up about a bay-and-a-half out from the bays and creep along at walking pace.',
+          'Count the white lines past your shoulder: 1 is your bay’s near line, 2 its far line, 3 is the next bay’s far line.',
+          'Stop when line 3 is level with your shoulder — that gap gives the car room to swing round.',
+          'All-round check, then full lock towards the bay and reverse slowly; the bay comes to you.',
           'Watch both door mirrors: when the bay lines run parallel either side, straighten up and roll back.',
           'Stop before the kerb or the line behind — a quick look over each shoulder as the boot swings in.',
         ],

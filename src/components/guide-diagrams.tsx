@@ -582,27 +582,66 @@ export function ParallelParkDiagram({ size = 260 }: { size?: number }) {
   );
 }
 
-// --- bay parking: reverse into the empty bay between two neighbours ---
+// --- bay parking: the three-white-lines reference ---
 
-const BAY_MS = 11000;
+const BAY_MS = 12000;
 const BAY_CAR_SIZE = 0.8;
 
-// Drive along the aisle past the target bay, pause shoulder-level with the
-// far line, then full lock and let the tail swing in; straighten and creep
-// back until centred.
-const BAY_PATH: CarPath = {
-  t: [0, 0.05, 0.16, 0.25, 0.35, 0.4, 0.46, 0.52, 0.57, 0.6, 0.68, 0.9, 1],
-  x: [-20, -20, 80, 148, 148, 140, 130, 122, 120, 120, 120, 120, 120],
-  y: [56, 56, 56, 56, 56, 58, 66, 80, 94, 104, 142, 142, 142],
-  r: [90, 90, 90, 90, 90, 80, 55, 26, 8, 0, 0, 0, 0],
-};
-const BAY_FADE: FadeTrack = { t: [0, 0.05, 0.88, 0.94, 1], v: [0, 1, 1, 0, 0] };
+// Bay lines at x = 60/100/140/180. Reversing into the bay at 100–140 from
+// the left, you count its near line (100 = 1), its far line (140 = 2) and
+// the next bay's far line (180 = 3) past your shoulder. Stop level with
+// line 3, full left lock, and the quarter-circle drops you into the bay.
+const BAY_LINE_XS = [60, 100, 140, 180];
+const BAY_TARGET_X = 120; // centre of the empty bay
+const BAY_AISLE_Y = 56;
 
-const BAY_PHASE_PAST: [number, number] = [0.05, 0.22];
-const BAY_PHASE_CHECK: [number, number] = [0.26, 0.35];
-const BAY_PHASE_SWING: [number, number] = [0.37, 0.58];
-const BAY_PHASE_CREEP: [number, number] = [0.59, 0.7];
-const BAY_PHASE_DONE: [number, number] = [0.73, 0.88];
+/** Quarter-circle from the aisle (heading east) into the bay (heading south). */
+const BAY_PATH: CarPath = (() => {
+  const t: number[] = [];
+  const x: number[] = [];
+  const y: number[] = [];
+  const r: number[] = [];
+  const add = (pt: number, px: number, py: number, pr: number) => {
+    t.push(pt);
+    x.push(px);
+    y.push(py);
+    r.push(pr);
+  };
+  add(0, -24, BAY_AISLE_Y, 90);
+  add(0.04, -24, BAY_AISLE_Y, 90);
+  add(0.14, 100, BAY_AISLE_Y, 90); // line 1 at the shoulder
+  add(0.2, 140, BAY_AISLE_Y, 90); // line 2
+  add(0.27, 180, BAY_AISLE_Y, 90); // line 3 — stop here
+  add(0.4, 180, BAY_AISLE_Y, 90); // pause: all-round check
+  // Full left lock: swing the tail through 90° about the bay's centreline.
+  const cx = BAY_TARGET_X;
+  const cy = BAY_AISLE_Y;
+  const radius = 180 - BAY_TARGET_X; // 60
+  for (let i = 0; i <= 8; i++) {
+    const a = (i / 8) * 90; // 0° = east of centre, 90° = below it
+    const rad = (a * Math.PI) / 180;
+    add(0.42 + (0.22 * i) / 8, cx + radius * Math.cos(rad), cy + radius * Math.sin(rad), 90 + a);
+  }
+  add(0.68, BAY_TARGET_X, 122, 180);
+  add(0.78, BAY_TARGET_X, 146, 180);
+  add(0.92, BAY_TARGET_X, 146, 180);
+  add(1, BAY_TARGET_X, 146, 180);
+  return { t, x, y, r };
+})();
+const BAY_FADE: FadeTrack = { t: [0, 0.04, 0.9, 0.96, 1], v: [0, 1, 1, 0, 0] };
+
+const BAY_PHASE_COUNT: [number, number] = [0.06, 0.26];
+const BAY_PHASE_STOP: [number, number] = [0.28, 0.4];
+const BAY_PHASE_SWING: [number, number] = [0.42, 0.62];
+const BAY_PHASE_CREEP: [number, number] = [0.64, 0.76];
+const BAY_PHASE_DONE: [number, number] = [0.79, 0.9];
+
+/** The "1 · 2 · 3" markers that light up as each line passes your shoulder. */
+const BAY_COUNT_BADGES: { line: number; label: string; range: [number, number] }[] = [
+  { line: 100, label: '1', range: [0.12, 0.34] },
+  { line: 140, label: '2', range: [0.18, 0.34] },
+  { line: 180, label: '3', range: [0.25, 0.42] },
+];
 
 export function BayParkDiagram({ size = 260 }: { size?: number }) {
   const theme = useTheme();
@@ -618,19 +657,33 @@ export function BayParkDiagram({ size = 260 }: { size?: number }) {
           <Rect x={0} y={0} width={VIEW_W} height={VIEW_H} fill={theme.roadLine} />
 
           {/* painted aisle arrow */}
-          <Rect x={16} y={53} width={16} height={6} fill={theme.roadDash} opacity={0.9} />
-          <Polygon points="32,47 32,65 46,56" fill={theme.roadDash} opacity={0.9} />
+          <Rect x={12} y={78} width={14} height={5} fill={theme.roadDash} opacity={0.75} />
+          <Polygon points="26,73 26,88 38,80.5" fill={theme.roadDash} opacity={0.75} />
 
           {/* the bays */}
-          {[60, 100, 140, 180].map((x) => (
+          {BAY_LINE_XS.map((x) => (
             <Line key={x} x1={x} y1={112} x2={x} y2={176} stroke={theme.roadDash} strokeWidth={2.5} />
           ))}
           <Line x1={59} y1={176} x2={181} y2={176} stroke={theme.roadDash} strokeWidth={2.5} />
 
           {/* neighbours either side of the empty bay */}
-          <CarTopDown x={80} y={142} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
-          <CarTopDown x={160} y={142} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
+          <CarTopDown x={80} y={144} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
+          <CarTopDown x={160} y={144} color={theme.textSecondary} opacity={0.6} carScale={BAY_CAR_SIZE} />
         </Svg>
+
+        {/* count the three lines off your shoulder as you pass them */}
+        {BAY_COUNT_BADGES.map((badge) => (
+          <FadeBadge
+            key={badge.label}
+            progress={progress}
+            range={badge.range}
+            x={badge.line - 6}
+            y={96}
+            scale={scale}
+            label={badge.label}
+            color={badge.label === '3' ? theme.success : theme.tint}
+          />
+        ))}
 
         <AnimatedCar
           progress={progress}
@@ -640,17 +693,17 @@ export function BayParkDiagram({ size = 260 }: { size?: number }) {
           scale={scale}
           sizeScale={BAY_CAR_SIZE}
           color={theme.tint}
-          brake={[[0.23, 0.35], [0.7, 0.84]]}
-          reverse={[[0.35, 0.68]]}
+          brake={[[0.24, 0.42], [0.78, 0.9]]}
+          reverse={[[0.42, 0.78]]}
         />
       </View>
 
       <View style={styles.captionStrip}>
-        <PhaseCaption progress={progress} range={BAY_PHASE_PAST} label="drive past — shoulders level with the far line" color={theme.tint} />
-        <PhaseCaption progress={progress} range={BAY_PHASE_CHECK} label="all-round check before you reverse" color={theme.tint} />
-        <PhaseCaption progress={progress} range={BAY_PHASE_SWING} label="full lock — let the tail swing into the bay" color={theme.tint} />
-        <PhaseCaption progress={progress} range={BAY_PHASE_CREEP} label="straighten and creep back" color={theme.tint} />
-        <PhaseCaption progress={progress} range={BAY_PHASE_DONE} label="centred between the lines — handbrake on" color={theme.success} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_COUNT} label="creep past, counting the lines: 1 … 2 … 3" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_STOP} label="stop level with line 3 — all-round check" color={theme.success} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_SWING} label="full left lock, reverse — the bay comes to you" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_CREEP} label="lines parallel in both mirrors — straighten up" color={theme.tint} />
+        <PhaseCaption progress={progress} range={BAY_PHASE_DONE} label="creep back inside the lines — handbrake on" color={theme.success} />
       </View>
     </View>
   );
