@@ -47,6 +47,25 @@ export const TRANSMISSION_LABELS: Record<Transmission, string> = {
 
 export type TheoryMode = 'practice' | 'topic' | 'mock' | 'signs' | 'safety';
 
+/**
+ * A self-contained snapshot of one question the pupil got wrong, stored on
+ * the attempt so it can be reviewed any time — no dependency on the live
+ * question bank, which may change.
+ */
+export interface TheoryReviewItem {
+  category: string;
+  question: string;
+  /** Options exactly as shown (already shuffled). */
+  options: string[];
+  /** Index into `options` the pupil chose, or null if they ran out of time. */
+  given: number | null;
+  /** Index into `options` of the correct answer. */
+  correct: number;
+  explanation: string;
+  /** Set for sign-recognition questions: renders the sign graphic. */
+  signId?: string;
+}
+
 export interface TheoryAttempt {
   id: number;
   studentId: number | null;
@@ -55,6 +74,8 @@ export interface TheoryAttempt {
   takenAt: string;
   mode: TheoryMode;
   topic: string | null;
+  /** Questions answered wrong, for later review. Empty for older attempts. */
+  wrong: TheoryReviewItem[];
   studentFirstName: string | null;
   studentLastName: string | null;
 }

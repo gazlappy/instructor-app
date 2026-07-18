@@ -61,7 +61,15 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
   // Stamp the version after each step so an interrupted run resumes cleanly.
-  const migrations = [migrateToV1, migrateToV2, migrateToV3, migrateToV4, migrateToV5, migrateToV6];
+  const migrations = [
+    migrateToV1,
+    migrateToV2,
+    migrateToV3,
+    migrateToV4,
+    migrateToV5,
+    migrateToV6,
+    migrateToV7,
+  ];
   for (let v = version; v < migrations.length; v++) {
     await migrations[v](db);
     await db.execAsync(`PRAGMA user_version = ${v + 1}`);
@@ -80,6 +88,7 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   await ensureColumns(db, 'theory_attempts', [
     ['mode', "TEXT NOT NULL DEFAULT 'practice'"],
     ['topic', 'TEXT'],
+    ['wrong_json', 'TEXT'],
   ]);
   await ensureColumns(db, 'lessons', [['cancellation_reason', 'TEXT']]);
   await ensureColumns(db, 'students', [
@@ -247,6 +256,11 @@ async function createV6Tables(db: SQLiteDatabase): Promise<void> {
 async function migrateToV6(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`ALTER TABLE lessons ADD COLUMN cancellation_reason TEXT;`);
   await createV6Tables(db);
+}
+
+/** Stores each attempt's wrong questions, so they can be reviewed later. */
+async function migrateToV7(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`ALTER TABLE theory_attempts ADD COLUMN wrong_json TEXT;`);
 }
 
 /** Wipes every user record (keeps the skills syllabus) and reseeds the starter instructor. */

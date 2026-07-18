@@ -18,6 +18,7 @@ import type {
   StudentStatus,
   TheoryAttempt,
   TheoryMode,
+  TheoryReviewItem,
   Transmission,
 } from './types';
 
@@ -392,28 +393,40 @@ export async function deleteLesson(db: SQLiteDatabase, id: number): Promise<void
 
 export async function createTheoryAttempt(
   db: SQLiteDatabase,
-  input: { studentId: number | null; score: number; total: number; mode: TheoryMode; topic: string | null }
+  input: {
+    studentId: number | null;
+    score: number;
+    total: number;
+    mode: TheoryMode;
+    topic: string | null;
+    wrong?: TheoryReviewItem[];
+  }
 ): Promise<void> {
   await db.runAsync(
-    'INSERT INTO theory_attempts (student_id, score, total, mode, topic) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO theory_attempts (student_id, score, total, mode, topic, wrong_json) VALUES (?, ?, ?, ?, ?, ?)',
     input.studentId,
     input.score,
     input.total,
     input.mode,
-    input.topic
+    input.topic,
+    input.wrong && input.wrong.length ? JSON.stringify(input.wrong) : null
   );
 }
 
-export function listTheoryAttempts(db: SQLiteDatabase, limit = 15): Promise<TheoryAttempt[]> {
-  return db.getAllAsync<TheoryAttempt>(
+export async function listTheoryAttempts(db: SQLiteDatabase, limit = 15): Promise<TheoryAttempt[]> {
+  const rows = await db.getAllAsync<Omit<TheoryAttempt, 'wrong'> & { wrongJson: string | null }>(
     `SELECT t.id, t.student_id AS studentId, t.score, t.total, t.taken_at AS takenAt,
-            t.mode, t.topic,
+            t.mode, t.topic, t.wrong_json AS wrongJson,
             s.first_name AS studentFirstName, s.last_name AS studentLastName
      FROM theory_attempts t
      LEFT JOIN students s ON s.id = t.student_id
      ORDER BY t.id DESC LIMIT ?`,
     limit
   );
+  return rows.map(({ wrongJson, ...row }) => ({
+    ...row,
+    wrong: wrongJson ? (JSON.parse(wrongJson) as TheoryReviewItem[]) : [],
+  }));
 }
 
 // --- lesson recaps ---

@@ -13,7 +13,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { SAFETY_QUESTIONS } from '@/data/safety-questions';
 import { THEORY_QUESTIONS, type TheoryQuestion } from '@/data/theory-questions';
 import { createTheoryAttempt, listStudents, listTheoryAttempts } from '@/db/queries';
-import { type TheoryMode } from '@/db/types';
+import { type TheoryAttempt, type TheoryMode, type TheoryReviewItem } from '@/db/types';
 import { useQuery } from '@/db/use-query';
 import { useTabReset } from '@/hooks/tab-reset';
 import { useTheme } from '@/hooks/use-theme';
@@ -91,6 +91,22 @@ function buildSignQuiz(): QuizQuestion[] {
   });
 }
 
+/** Snapshot of every wrongly-answered question, for storing on the attempt. */
+function buildReview(quiz: QuizQuestion[], given: (number | null)[]): TheoryReviewItem[] {
+  return quiz
+    .map((q, i) => ({ q, answer: given[i] ?? null }))
+    .filter(({ q, answer }) => answer !== q.correctIndex)
+    .map(({ q, answer }) => ({
+      category: q.category,
+      question: q.question,
+      options: q.shuffledOptions,
+      given: answer,
+      correct: q.correctIndex,
+      explanation: q.explanation,
+      ...(q.signId ? { signId: q.signId } : {}),
+    }));
+}
+
 function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
@@ -131,9 +147,11 @@ export default function TheoryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
 
-  const [phase, setPhase] = useState<'start' | 'topics' | 'quiz' | 'review' | 'results' | 'browse'>(
-    'start'
-  );
+  const [phase, setPhase] = useState<
+    'start' | 'topics' | 'quiz' | 'review' | 'results' | 'browse' | 'attemptReview'
+  >('start');
+  // A past attempt reopened from Recent Attempts, to review its wrong answers.
+  const [reviewAttempt, setReviewAttempt] = useState<TheoryAttempt | null>(null);
   const [mode, setMode] = useState<TheoryMode>('practice');
   const [length, setLength] = useState(10);
   const [topic, setTopic] = useState<string>(TOPICS[0].value);
@@ -187,12 +205,15 @@ export default function TheoryScreen() {
     if (finishedRef.current) return;
     finishedRef.current = true;
     setScore(finalScore);
+    const finishedQuiz = quizOverride ?? quiz;
     await createTheoryAttempt(db, {
       studentId: studentId || null,
       score: finalScore,
-      total: (quizOverride ?? quiz).length,
+      total: finishedQuiz.length,
       mode,
       topic: mode === 'topic' ? topic : null,
+      // The mock records every answer, so its wrong ones can be reviewed later.
+      wrong: mode === 'mock' ? buildReview(finishedQuiz, answersRef.current) : [],
     });
     refreshAttempts();
     setPhase('results');
@@ -389,8 +410,13 @@ export default function TheoryScreen() {
                     const pct = Math.round((attempt.score / attempt.total) * 100);
                     const ok = attempt.score / attempt.total >= PASS_MARK;
                     const label = attempt.mode === 'topic' ? (attempt.topic ?? 'Topic') : MODE_TITLES[attempt.mode];
-                    return (
-                      <ThemedView key={attempt.id} type="backgroundElement" style={styles.attemptRow}>
+                    const reviewable = attempt.wrong.length > 0;
+                    const openReview = () => {
+                      setReviewAttempt(attempt);
+                      setPhase('attemptReview');
+                    };
+                    const row = (
+                      <ThemedView type="backgroundElement" style={styles.attemptRow}>
                         <View style={styles.flex}>
                           <ThemedText type="small">
                             {attempt.studentFirstName
@@ -401,12 +427,25 @@ export default function TheoryScreen() {
                           </ThemedText>
                           <ThemedText type="small" themeColor="textSecondary">
                             {formatDateUK(attempt.takenAt.slice(0, 10))}
+                            {reviewable
+                              ? ` · review ${attempt.wrong.length} missed ›`
+                              : ''}
                           </ThemedText>
                         </View>
                         <ThemedText type="smallBold" style={{ color: ok ? theme.success : theme.danger }}>
                           {attempt.score}/{attempt.total} · {pct}%
                         </ThemedText>
                       </ThemedView>
+                    );
+                    return reviewable ? (
+                      <Pressable
+                        key={attempt.id}
+                        onPress={openReview}
+                        style={({ pressed }) => pressed && styles.pressed}>
+                        {row}
+                      </Pressable>
+                    ) : (
+                      <View key={attempt.id}>{row}</View>
                     );
                   })}
                 </>
@@ -676,6 +715,62 @@ export default function TheoryScreen() {
               )}
             </>
           )}
+
+          {phase === 'attemptReview' && reviewAttempt && (
+            <>
+              <View style={styles.startRow}>
+                <Chip label="‹ Back" onPress={() => setPhase('start')} />
+              </View>
+              <ThemedView type="backgroundElement" style={styles.resultCard}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {MODE_TITLES[reviewAttempt.mode]}
+                  {reviewAttempt.studentFirstName
+                    ? ` — ${reviewAttempt.studentFirstName} ${reviewAttempt.studentLastName ?? ''}`.trim()
+                    : ''}
+                  {' · '}
+                  {formatDateUK(reviewAttempt.takenAt.slice(0, 10))}
+                </ThemedText>
+                <ThemedText
+                  type="title"
+                  style={{
+                    color:
+                      reviewAttempt.score / reviewAttempt.total >= PASS_MARK
+                        ? theme.success
+                        : theme.danger,
+                  }}>
+                  {reviewAttempt.score}/{reviewAttempt.total}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {reviewAttempt.wrong.length} to work on
+                </ThemedText>
+              </ThemedView>
+
+              {reviewAttempt.wrong.map((item, i) => (
+                <ThemedView key={i} type="backgroundElement" style={styles.reviewCard}>
+                  {item.signId && (
+                    <View style={styles.reviewSign}>
+                      <RoadSign id={item.signId} size={56} />
+                    </View>
+                  )}
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.category}
+                  </ThemedText>
+                  <ThemedText type="smallBold">{item.question}</ThemedText>
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    {item.given !== null
+                      ? `✗ You answered: ${item.options[item.given]}`
+                      : '✗ Not answered (time ran out)'}
+                  </ThemedText>
+                  <ThemedText type="small" style={{ color: theme.success }}>
+                    ✓ {item.options[item.correct]}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.explanation}
+                  </ThemedText>
+                </ThemedView>
+              ))}
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -792,6 +887,10 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.one,
+  },
+  reviewSign: {
+    alignItems: 'center',
+    paddingBottom: Spacing.one,
   },
   reviewSummary: {
     borderRadius: 12,
