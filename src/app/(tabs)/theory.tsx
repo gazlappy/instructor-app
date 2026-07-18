@@ -165,6 +165,7 @@ export default function TheoryScreen() {
   const [flags, setFlags] = useState<boolean[]>([]);
   const [fromReview, setFromReview] = useState(false);
   const [remaining, setRemaining] = useState(0);
+  const [saveFailed, setSaveFailed] = useState(false);
   const finishedRef = useRef(false);
 
   const { data: students } = useQuery((db) => listStudents(db, { includePassed: false }));
@@ -206,17 +207,25 @@ export default function TheoryScreen() {
     finishedRef.current = true;
     setScore(finalScore);
     const finishedQuiz = quizOverride ?? quiz;
-    await createTheoryAttempt(db, {
-      studentId: studentId || null,
-      score: finalScore,
-      total: finishedQuiz.length,
-      mode,
-      topic: mode === 'topic' ? topic : null,
-      // The mock records every answer, so its wrong ones can be reviewed later.
-      wrong: mode === 'mock' ? buildReview(finishedQuiz, answersRef.current) : [],
-    });
-    refreshAttempts();
+    // Always show the result, even if saving fails — the results screen is
+    // built from live state, so the pupil never loses their test to a
+    // database hiccup. Only the persisted history entry is at risk.
+    setSaveFailed(false);
     setPhase('results');
+    try {
+      await createTheoryAttempt(db, {
+        studentId: studentId || null,
+        score: finalScore,
+        total: finishedQuiz.length,
+        mode,
+        topic: mode === 'topic' ? topic : null,
+        // The mock records every answer, so its wrong ones can be reviewed later.
+        wrong: mode === 'mock' ? buildReview(finishedQuiz, answersRef.current) : [],
+      });
+      refreshAttempts();
+    } catch {
+      setSaveFailed(true);
+    }
   };
 
   const scoreFromAnswers = (list: (number | null)[]) =>
@@ -676,6 +685,11 @@ export default function TheoryScreen() {
                     : 'The real test needs 86% — keep practising!'}
                 </ThemedText>
               </ThemedView>
+              {saveFailed && (
+                <ThemedText type="small" style={{ color: theme.danger }}>
+                  ⚠︎ Couldn’t save this to your history, but your result and review are shown below.
+                </ThemedText>
+              )}
               <View style={styles.resultButtons}>
                 <Chip label="Back to start" onPress={() => setPhase('start')} />
                 <Chip label="Try again" selected onPress={() => start(mode)} />
