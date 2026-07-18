@@ -73,6 +73,39 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   await migrateToV2(db);
   await migrateToV4(db);
   await createV6Tables(db);
+
+  // ALTER TABLE ADD COLUMN is not idempotent, so the loop above cannot re-run
+  // it to heal a database whose version got ahead of its actual columns. Add
+  // any missing columns explicitly, which is safe to run on every launch.
+  await ensureColumns(db, 'theory_attempts', [
+    ['mode', "TEXT NOT NULL DEFAULT 'practice'"],
+    ['topic', 'TEXT'],
+  ]);
+  await ensureColumns(db, 'lessons', [['cancellation_reason', 'TEXT']]);
+  await ensureColumns(db, 'students', [
+    ['date_of_birth', 'TEXT'],
+    ['licence_number', 'TEXT'],
+    ['transmission', "TEXT NOT NULL DEFAULT 'manual'"],
+    ['theory_passed', 'INTEGER NOT NULL DEFAULT 0'],
+    ['theory_test_date', 'TEXT'],
+    ['test_centre', 'TEXT'],
+    ['emergency_contact', 'TEXT'],
+  ]);
+}
+
+/** Adds any of `columns` that the table is missing. Idempotent — safe every launch. */
+async function ensureColumns(
+  db: SQLiteDatabase,
+  table: string,
+  columns: [name: string, definition: string][]
+): Promise<void> {
+  const info = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  const existing = new Set(info.map((c) => c.name));
+  for (const [name, definition] of columns) {
+    if (!existing.has(name)) {
+      await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  }
 }
 
 async function migrateToV1(db: SQLiteDatabase): Promise<void> {
