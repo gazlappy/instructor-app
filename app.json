@@ -8,7 +8,9 @@
     "scheme": "instructorapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.gazlappy.instructorapp",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
